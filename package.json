@@ -1,0 +1,13 @@
+{
+  "name": "pokersite",
+  "version": "1.0.0",
+  "description": "PokerSite — jugador multiusuario de Texas Hold'em (Node + Socket.io + React)",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix web install && npm --prefix web run build && npm --prefix backend install",
+    "start": "npm --prefix backend start"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

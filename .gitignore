@@ -1,0 +1,38 @@
+# ── Dependencias (se reinstalan solas en el servidor) ──
+node_modules/
+**/node_modules/
+
+# ── SECRETOS: nunca subir. Contraseñas, JWT, llaves de Culqi/Stripe ──
+.env
+**/.env
+.env.local
+.env.*.local
+
+# ── Build del frontend (se genera en el servidor) ──
+web/dist/
+web/dist-ssr/
+
+# ── Archivos de prueba y logs generados durante el desarrollo ──
+*.log
+bot*.txt
+log_*.txt
+*_log.txt
+server_log*.txt
+chatter*.txt
+bot_output*.txt
+
+# ── Scripts utilitarios locales (no van a producción) ──
+backend/refill.js
+backend/mktable.js
+backend/addcarlos.js
+backend/test_rathole.js
+backend/test_chatter.js
+
+# ── Editor / sistema ──
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
