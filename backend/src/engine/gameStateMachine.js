@@ -76,6 +76,7 @@ function publicTableState(table) {
       position: s.position,
       playerId: s.playerId || null,
       nickname: s.nickname || null,
+      avatarConfig: s.avatarConfig || null,
       stack: s.stack,
       status: s.status,
       cards: s.status !== 'empty' ? s.cards.map(() => null) : [], // hide cards

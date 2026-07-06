@@ -135,6 +135,14 @@ module.exports = function registerTableHandlers(socket, io) {
         return socket.emit('error', { code: 'TABLE_FULL', message: 'Mesa llena' });
       }
 
+      // Cargar el avatar personalizado del jugador al asiento (para que todos lo vean)
+      try {
+        const [[av]] = await pool.query('SELECT avatar_config FROM players WHERE id = ?', [player.id]);
+        if (av?.avatar_config) {
+          seat.avatarConfig = typeof av.avatar_config === 'string' ? JSON.parse(av.avatar_config) : av.avatar_config;
+        }
+      } catch {}
+
       // Joining mid-hand? Wait for the next hand (no cards, no action)
       if (table.phase !== 'waiting') {
         seat.status = 'sitting_out';

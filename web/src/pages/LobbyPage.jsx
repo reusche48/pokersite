@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { Avatar } from '../components/table/Avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,7 +176,14 @@ export function LobbyPage() {
             {isAdmin && <button onClick={() => navigate('/admin/bots')} className="text-xs text-yellow-400 hover:text-yellow-300 font-bold">⚙️ Admin</button>}
             <button onClick={() => navigate('/estadisticas')} className="text-xs text-green-400 hover:text-green-300 font-bold">📈 Estadísticas</button>
             <button onClick={() => navigate('/historial')} className="text-xs text-sky-400 hover:text-sky-300 font-bold">📜 Mis manos</button>
-            <span className="text-sm text-gray-300">{player.nickname}</span>
+            <button
+              onClick={() => navigate('/perfil')}
+              className="flex items-center gap-2 hover:brightness-125 transition"
+              title="Editar mi perfil"
+            >
+              <Avatar nickname={player.nickname} avatarConfig={player.avatar_config} size={30} />
+              <span className="text-sm text-gray-300">{player.nickname}</span>
+            </button>
             <span className="text-sm text-green-400 font-mono">🎮 ${player.play_chips?.toLocaleString()}</span>
             <button onClick={logout} className="text-xs text-gray-500 hover:text-gray-300">Salir</button>
           </div>

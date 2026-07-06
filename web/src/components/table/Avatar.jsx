@@ -13,11 +13,12 @@ const AVATAR_STATES = {
 
 export function Avatar({ nickname, avatarConfig = {}, state = 'idle', size = 32 }) {
   const seed = nickname || 'default';
+  const cfgKey = avatarConfig ? JSON.stringify(avatarConfig) : '';
   const svg = useMemo(() => createAvatar(avataaars, {
     seed,
-    ...avatarConfig,
+    ...(avatarConfig || {}),
     size: 64,
-  }).toString(), [seed]);
+  }).toString(), [seed, cfgKey]);
 
   return (
     <motion.div

@@ -65,6 +65,15 @@ export function AuthProvider({ children }) {
     setPlayer(null);
   }
 
+  function setAvatar(avatarConfig) {
+    setPlayer(p => {
+      if (!p) return p;
+      const updated = { ...p, avatar_config: avatarConfig };
+      localStorage.setItem('player', JSON.stringify(updated));
+      return updated;
+    });
+  }
+
   function updateChips(delta, chipMode) {
     setPlayer(p => {
       if (!p) return p;
@@ -77,7 +86,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ player, isAdmin, loading, guestLogin, login, register, logout, updateChips }}>
+    <AuthContext.Provider value={{ player, isAdmin, loading, guestLogin, login, register, logout, updateChips, setAvatar }}>
       {children}
     </AuthContext.Provider>
   );

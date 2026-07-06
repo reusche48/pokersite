@@ -150,7 +150,7 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
         )}
 
         <div className="flex items-center gap-1.5 px-2.5 py-1">
-          <Avatar nickname={seat.nickname} state={avatarState} size={26} />
+          <Avatar nickname={seat.nickname} avatarConfig={seat.avatarConfig} state={avatarState} size={26} />
           <div className="flex flex-col min-w-0 items-center flex-1">
             <span className={`flex items-center text-xs font-bold truncate max-w-[80px] ${
               isWinner ? 'text-yellow-400' : isMe ? 'text-yellow-300' : 'text-white'
