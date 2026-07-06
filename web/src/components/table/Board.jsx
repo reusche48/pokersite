@@ -26,9 +26,14 @@ export function Board({ community = [], phase, play }) {
         {cards.map((card, i) => (
           <AnimatePresence key={i}>
             <motion.div
-              initial={{ rotateY: 90, y: -20, opacity: 0 }}
-              animate={{ rotateY: 0, y: 0, opacity: 1 }}
-              transition={{ delay: i >= 3 ? 0 : i * 0.15, duration: 0.4, ease: 'easeOut' }}
+              initial={{ rotateY: 90, y: -26, scale: 0.7, opacity: 0 }}
+              animate={{ rotateY: 0, y: 0, scale: [0.7, 1.12, 1], opacity: 1 }}
+              transition={{
+                delay: i >= 3 ? 0 : i * 0.15,
+                duration: 0.45,
+                ease: 'easeOut',
+                scale: { times: [0, 0.7, 1], duration: 0.5, delay: i >= 3 ? 0 : i * 0.15 },
+              }}
             >
               <PlayingCard card={card} />
             </motion.div>

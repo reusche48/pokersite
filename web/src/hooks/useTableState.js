@@ -93,6 +93,11 @@ export function useTableState(tableId, buyIn) {
         const seat = seatsRef.current.find(st => st.playerId === playerId);
         if (seat) pushAnim('bet_fly', { position: seat.position, amount });
       }
+      // Fold → sus cartas vuelan boca abajo al muck (centro de la mesa)
+      if (type === 'fold') {
+        const seat = seatsRef.current.find(st => st.playerId === playerId);
+        if (seat) pushAnim('muck', { position: seat.position });
+      }
       setTableState(prev => {
         if (!prev) return prev;
         const seats = prev.seats.map(s =>

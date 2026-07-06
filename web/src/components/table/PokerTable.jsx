@@ -9,6 +9,9 @@ import { ChatBox } from './ChatBox';
 import { ChipStack } from './ChipStack';
 import { ChipFlightLayer } from './ChipFlightLayer';
 import { DealLayer } from './DealLayer';
+import { MuckLayer } from './MuckLayer';
+import { WinnerParticles } from './WinnerParticles';
+import { CinemaOverlay } from './CinemaOverlay';
 import { DealerButton } from './DealerButton';
 import { AnimatedNumber } from '../common/AnimatedNumber';
 import { PlayerProfileModal } from './PlayerProfileModal';
@@ -73,6 +76,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
   const { getNote, saveNote } = usePlayerNotes();
   const [profilePlayer, setProfilePlayer] = useState(null); // seat being profiled
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [cinema, setCinema] = useState(false); // modo cine durante el run-out de all-in
 
   // Leaving mid-hand costs you the hand — confirm first
   function requestLeave() {
@@ -89,14 +93,25 @@ export function PokerTable({ tableId, initialBuyIn }) {
     }
   }, [lastWinner]);
 
-  // All-in run-out → heartbeat suspense sound
+  // All-in run-out → heartbeat suspense sound + modo cine
   useEffect(() => {
     const ev = animEvents.find(e => e.type === 'runout');
     if (ev) {
       play('suspense');
+      setCinema(true);
       consumeAnim(ev.id);
     }
   }, [animEvents]);
+
+  // El modo cine termina cuando se resuelve la mano (o por seguridad a los 12s)
+  useEffect(() => {
+    if (lastWinner) setCinema(false);
+  }, [lastWinner]);
+  useEffect(() => {
+    if (!cinema) return;
+    const t = setTimeout(() => setCinema(false), 12000);
+    return () => clearTimeout(t);
+  }, [cinema]);
 
   // Memoized visual layout — only rebuilds when occupancy changes.
   // Seats are assigned CLOCKWISE starting from me, matching real turn order,
@@ -327,6 +342,22 @@ export function PokerTable({ tableId, initialBuyIn }) {
             centerXY={centerXY}
             ready={ready}
           />
+          <MuckLayer
+            animEvents={animEvents}
+            consumeAnim={consumeAnim}
+            getSeatXY={getSeatXY}
+            centerXY={centerXY}
+            ready={ready}
+          />
+          <WinnerParticles
+            lastWinner={lastWinner}
+            seats={tableState.seats}
+            getSeatXY={getSeatXY}
+            ready={ready}
+          />
+
+          {/* Modo cine durante el run-out de all-in */}
+          <CinemaOverlay active={cinema} />
 
           {/* Winner overlay */}
           <WinnerOverlay lastWinner={lastWinner} myPlayerId={player?.id} onDismiss={clearLastWinner} />
