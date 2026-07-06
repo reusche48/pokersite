@@ -22,6 +22,12 @@ const APELLIDOS = [
 ];
 const APODOS = ['', '', '', '_pe', '07', '10', 'crack', '_lima', 'kbz', '_cusco', '23', 'flaco', '_jr', 'x'];
 
+// Estilos de caricatura DiceBear (open-source) que se reparten entre los bots
+const BOT_STYLES = [
+  'bottts', 'funEmoji', 'adventurer', 'bigSmile', 'micah',
+  'openPeeps', 'personas', 'lorelei', 'notionists', 'toonHead', 'miniavs', 'croodles',
+];
+
 function botIdFor(nickname) {
   const h = createHash('md5').update(nickname).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
@@ -73,12 +79,16 @@ async function main() {
     const tight = (seededRand(nickname + 'tight') - 0.5) * 0.24;
     const personality = { aggro: +aggro.toFixed(3), tight: +tight.toFixed(3) };
 
-    // player (is_bot=1) con stack amplio para buy-ins
+    // Avatar de caricatura: estilo determinista por bot (semilla estable = nickname)
+    const style = BOT_STYLES[Math.floor(seededRand(nickname + 'style') * BOT_STYLES.length)];
+    const avatarConfig = JSON.stringify({ _style: style });
+
+    // player (is_bot=1) con stack amplio para buy-ins + avatar de caricatura
     await pool.query(
-      `INSERT INTO players (id, nickname, play_chips, is_bot)
-       VALUES (?, ?, 100000, 1)
-       ON DUPLICATE KEY UPDATE is_bot = 1, play_chips = GREATEST(play_chips, 100000)`,
-      [botId, nickname]
+      `INSERT INTO players (id, nickname, play_chips, is_bot, avatar_config)
+       VALUES (?, ?, 100000, 1, ?)
+       ON DUPLICATE KEY UPDATE is_bot = 1, play_chips = GREATEST(play_chips, 100000), avatar_config = VALUES(avatar_config)`,
+      [botId, nickname, avatarConfig]
     );
     // fila bots con nivel + personalidad
     await pool.query(

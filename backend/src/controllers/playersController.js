@@ -54,8 +54,11 @@ async function refill(req, res) {
 
 async function updateAvatar(req, res) {
   const { avatarConfig } = req.body;
-  if (!avatarConfig) return res.status(400).json({ error: 'avatarConfig required' });
-  await pool.query('UPDATE players SET avatar_config = ? WHERE id = ?', [JSON.stringify(avatarConfig), req.player.id]);
+  if (!avatarConfig || typeof avatarConfig !== 'object') return res.status(400).json({ error: 'avatarConfig requerido' });
+  const json = JSON.stringify(avatarConfig);
+  // Límite para imágenes propias (base64): ~200KB
+  if (json.length > 200000) return res.status(413).json({ error: 'La imagen es demasiado grande (máx ~200KB)' });
+  await pool.query('UPDATE players SET avatar_config = ? WHERE id = ?', [json, req.player.id]);
   res.json({ ok: true });
 }
 
