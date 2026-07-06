@@ -48,6 +48,9 @@ module.exports = function initSockets(io) {
         for (const table of tm.getAllTables()) {
           const seat = table.seats.find(s => s.playerId === pid);
           if (!seat) continue;
+          // En torneos, una desconexión breve NO expulsa: el jugador conserva
+          // su asiento y sus fichas de torneo (se le auto-foldea si es su turno).
+          if (table.isTournament) continue;
 
           if (table.phase === 'waiting') {
             // Safe to remove — no hand in progress

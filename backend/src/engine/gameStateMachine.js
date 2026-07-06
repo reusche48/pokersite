@@ -92,6 +92,8 @@ function publicTableState(table) {
 // ──────────────────────────────────────────────
 
 function startHand(table) {
+  // Mesa de torneo ya cerrada/rota: no arrancar más manos
+  if (table.tournamentOver) return;
   // Anyone seated with chips plays the next hand (including players who
   // joined mid-hand and were waiting as sitting_out)
   const readySeats = table.seats.filter(s => s.playerId && s.status !== 'empty' && s.stack > 0);
@@ -553,15 +555,21 @@ function runShowdown(table, earlyEnd = false) {
     }
   }
 
-  // Players with 0 chips are busted — announce and remove them from the table
-  // (cash game rule: rebuy from the lobby to come back)
+  // Players with 0 chips are busted. Cash: deja la mesa (rebuy desde el lobby).
+  // Torneo: eliminado (se registra su posición antes de liberar el asiento).
   const busted = table.seats.filter(s => s.playerId && s.status !== 'empty' && s.stack === 0);
   for (const s of busted) {
     s.status = 'sitting_out';
     emitToTable(table.id, 'chat_received', {
       playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
-      text: `${s.nickname} se quedó sin fichas y deja la mesa`,
+      text: table.isTournament
+        ? `${s.nickname} fue eliminado del torneo`
+        : `${s.nickname} se quedó sin fichas y deja la mesa`,
     });
+  }
+  // Torneo: avisar al manager de las eliminaciones (para final_position) antes de liberar
+  if (busted.length && table.isTournament && table.onBust) {
+    table.onBust(busted.map(s => ({ playerId: s.playerId, nickname: s.nickname })));
   }
   if (busted.length) {
     const bustedIds = busted.map(s => s.playerId);
@@ -587,8 +595,11 @@ function runShowdown(table, earlyEnd = false) {
   table.phase = 'waiting';
   table.potManager = new PotManager();
 
-  // Auto-start next hand after delay
-  setTimeout(() => startHand(table), 5000);
+  // Torneo: dejar que el manager revise si ya hay ganador o suba las ciegas
+  if (table.isTournament && table.onHandComplete) table.onHandComplete(table);
+
+  // Auto-start next hand after delay (salvo que el torneo ya haya terminado)
+  if (!table.tournamentOver) setTimeout(() => startHand(table), 5000);
 }
 
 // Called when a player leaves mid-hand: fold them and keep the game moving.
@@ -620,4 +631,4 @@ function handlePlayerExit(table, playerId) {
   return true;
 }
 
-module.exports = { startHand, processAction, setIo, publicTableState, handlePlayerExit };
+module.exports = { startHand, processAction, setIo, publicTableState, handlePlayerExit, emitToTable, emitToPlayer };

@@ -16,6 +16,8 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/tables', require('./src/routes/tables'));
 app.use('/api/players', require('./src/routes/players'));
 app.use('/api/hands', require('./src/routes/hands'));
+app.use('/api/admin', require('./src/routes/admin'));
+app.use('/api/tournaments', require('./src/routes/tournaments'));
 
 // ── Servir la web compilada (producción) ───────────────────────────
 // En desarrollo, Vite sirve el frontend y hace proxy de /api hacia aquí,

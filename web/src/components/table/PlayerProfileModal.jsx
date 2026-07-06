@@ -6,6 +6,7 @@ import { PLAYER_TAGS } from '../../hooks/usePlayerNotes';
 export function PlayerProfileModal({ player, currentNote, onSave, onClose }) {
   const [tag, setTag] = useState(currentNote?.tag || null);
   const [note, setNote] = useState(currentNote?.note || '');
+  const [level, setLevel] = useState(currentNote?.estimatedLevel || null);
 
   if (!player) return null;
 
@@ -56,6 +57,26 @@ export function PlayerProfileModal({ player, currentNote, onSave, onClose }) {
             ))}
           </div>
 
+          {/* Nivel estimado (5-10) — el tester adivina la habilidad del rival */}
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">
+            ¿Qué nivel crees que tiene? <span className="text-gray-600 normal-case">(5 novato · 10 experto)</span>
+          </p>
+          <div className="flex gap-1.5 mb-4">
+            {[5, 6, 7, 8, 9, 10].map(n => (
+              <button
+                key={n}
+                onClick={() => setLevel(level === n ? null : n)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                  level === n
+                    ? 'bg-yellow-600 text-black'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
           {/* Free note */}
           <textarea
             value={note}
@@ -74,16 +95,16 @@ export function PlayerProfileModal({ player, currentNote, onSave, onClose }) {
             >
               Cancelar
             </button>
-            {(currentNote?.tag || currentNote?.note) && (
+            {(currentNote?.tag || currentNote?.note || currentNote?.estimatedLevel) && (
               <button
-                onClick={() => { onSave(null, ''); onClose(); }}
+                onClick={() => { onSave(null, '', null); onClose(); }}
                 className="flex-1 bg-red-900 hover:bg-red-800 text-white py-2 rounded-lg text-sm"
               >
                 Quitar perfil
               </button>
             )}
             <button
-              onClick={() => { onSave(tag, note.trim()); onClose(); }}
+              onClick={() => { onSave(tag, note.trim(), level); onClose(); }}
               className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded-lg text-sm"
             >
               Guardar

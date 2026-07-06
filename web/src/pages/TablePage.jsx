@@ -17,6 +17,19 @@ export function TablePage() {
     connect();
   }, [player]);
 
+  // Torneo multi-mesa: si me mueven de mesa, el servidor me avisa y navego a la nueva
+  useEffect(() => {
+    const s = socket?.current;
+    if (!s) return;
+    const onMove = ({ tableId }) => {
+      if (tableId && tableId !== id) navigate(`/table/${tableId}?buyIn=1500`);
+    };
+    const onEnd = () => { setTimeout(() => navigate('/'), 9000); };
+    s.on('torneo_mesa_cambiada', onMove);
+    s.on('torneo_finalizado', onEnd);
+    return () => { s.off('torneo_mesa_cambiada', onMove); s.off('torneo_finalizado', onEnd); };
+  }, [socket, id, connected]);
+
   if (!player) return null;
   if (!connected) {
     return (

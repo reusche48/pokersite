@@ -31,6 +31,13 @@ module.exports = function registerTableHandlers(socket, io) {
         });
       }
 
+      // Un socket solo debe estar en UNA sala de mesa a la vez. Al entrar a una
+      // mesa, sale de cualquier otra sala table:* (clave para mover jugadores
+      // entre mesas en torneos multi-mesa sin recibir eventos de dos mesas).
+      for (const room of socket.rooms) {
+        if (room.startsWith('table:') && room !== `table:${tableId}`) socket.leave(room);
+      }
+
       // If player already seated — just re-join room, re-send state
       if (tm.isPlayerSeated(table, player.id)) {
         socket.join(`table:${tableId}`);

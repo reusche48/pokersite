@@ -124,6 +124,36 @@ async function setupDb() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    // Migration: bot flag on players (nivel real vive aparte, nunca se expone)
+    try {
+      await conn.query(`ALTER TABLE players ADD COLUMN is_bot TINYINT(1) NOT NULL DEFAULT 0`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
+    // Bots: el nivel real y la personalidad viven aislados de players
+    await conn.query(`CREATE TABLE IF NOT EXISTS bots (
+      bot_id           CHAR(36)     NOT NULL,
+      level            TINYINT      NOT NULL,
+      personality_json JSON,
+      created_at       DATETIME     NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (bot_id),
+      FOREIGN KEY (bot_id) REFERENCES players(id),
+      INDEX idx_level (level)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Etiquetas de los testers: qué nivel le adivinan a cada jugador/bot
+    await conn.query(`CREATE TABLE IF NOT EXISTS tester_labels (
+      tester_id       CHAR(36)     NOT NULL,
+      target_id       CHAR(36)     NOT NULL,
+      estimated_level TINYINT      NULL,
+      tag             VARCHAR(16)  NULL,
+      note            VARCHAR(200) NULL,
+      updated_at      DATETIME     NOT NULL DEFAULT NOW() ON UPDATE NOW(),
+      PRIMARY KEY (tester_id, target_id),
+      INDEX idx_target (target_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
     console.log('[DB] Schema created/verified');
   } finally {
     conn.release();

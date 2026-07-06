@@ -362,7 +362,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
           <PlayerProfileModal
             player={profilePlayer}
             currentNote={getNote(profilePlayer.playerId)}
-            onSave={(tag, note) => saveNote(profilePlayer.playerId, tag, note)}
+            onSave={(tag, note, estimatedLevel) => saveNote(profilePlayer.playerId, tag, note, estimatedLevel)}
             onClose={() => setProfilePlayer(null)}
           />
         )}

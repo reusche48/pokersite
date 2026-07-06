@@ -27,6 +27,7 @@ backend/mktable.js
 backend/addcarlos.js
 backend/test_rathole.js
 backend/test_chatter.js
+backend/narrate.js
 
 # ── Editor / sistema ──
 .vscode/*

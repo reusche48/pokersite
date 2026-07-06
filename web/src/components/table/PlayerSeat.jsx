@@ -108,6 +108,16 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
         </div>
       )}
 
+      {/* Estimated-level badge — my guess of this player's skill */}
+      {!isMe && playerNote?.estimatedLevel && (
+        <div
+          className="absolute -top-2 -left-2 z-20 min-w-[24px] h-6 px-1 rounded-full flex items-center justify-center text-[10px] font-black text-black shadow-lg bg-yellow-500 border-2 border-black/40"
+          title={`Nivel estimado: ${playerNote.estimatedLevel}`}
+        >
+          Nv{playerNote.estimatedLevel}
+        </div>
+      )}
+
       {/* Name plate (click an opponent to profile them) */}
       <motion.div
         animate={plateAnimate}

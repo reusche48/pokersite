@@ -59,4 +59,31 @@ async function updateAvatar(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { getMe, getHistory, refill, updateAvatar };
+// ── Etiquetas de testers (qué nivel le adivinan a cada jugador/bot) ──
+async function saveLabel(req, res) {
+  const { targetId, estimatedLevel, tag, note } = req.body;
+  if (!targetId) return res.status(400).json({ error: 'targetId requerido' });
+  if (targetId === req.player.id) return res.status(400).json({ error: 'No puedes etiquetarte a ti mismo' });
+  const lvl = estimatedLevel === null || estimatedLevel === undefined ? null : Number(estimatedLevel);
+  if (lvl !== null && (lvl < 1 || lvl > 10)) return res.status(400).json({ error: 'Nivel estimado 1-10' });
+  await pool.query(
+    `INSERT INTO tester_labels (tester_id, target_id, estimated_level, tag, note)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE estimated_level = VALUES(estimated_level), tag = VALUES(tag), note = VALUES(note)`,
+    [req.player.id, targetId, lvl, tag || null, (note || '').slice(0, 200) || null]
+  );
+  res.json({ ok: true });
+}
+
+async function getLabels(req, res) {
+  const [rows] = await pool.query(
+    'SELECT target_id, estimated_level, tag, note FROM tester_labels WHERE tester_id = ?',
+    [req.player.id]
+  );
+  // Mapa targetId -> { estimatedLevel, tag, note } para consumo directo en el cliente
+  const map = {};
+  for (const r of rows) map[r.target_id] = { estimatedLevel: r.estimated_level, tag: r.tag, note: r.note };
+  res.json(map);
+}
+
+module.exports = { getMe, getHistory, refill, updateAvatar, saveLabel, getLabels };

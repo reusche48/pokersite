@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import api from '../services/api';
 
 // Player notes/tags — persisted locally per logged-in user (PokerStars-style).
 export const PLAYER_TAGS = {
@@ -29,16 +30,37 @@ function load() {
 export function usePlayerNotes() {
   const [notes, setNotes] = useState(load);
 
+  // Al montar, trae las etiquetas del servidor y las mezcla con las locales
+  // (el servidor manda: incluye estimatedLevel para la comparación admin)
+  useEffect(() => {
+    let alive = true;
+    api.get('/players/labels').then(({ data }) => {
+      if (!alive || !data) return;
+      setNotes(prev => {
+        const merged = { ...prev };
+        for (const [pid, l] of Object.entries(data)) {
+          merged[pid] = { tag: l.tag || undefined, note: l.note || undefined, estimatedLevel: l.estimatedLevel ?? undefined };
+        }
+        localStorage.setItem(storageKey(), JSON.stringify(merged));
+        return merged;
+      });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const getNote = useCallback((playerId) => notes[playerId] || null, [notes]);
 
-  const saveNote = useCallback((playerId, tag, note) => {
+  const saveNote = useCallback((playerId, tag, note, estimatedLevel) => {
     setNotes(prev => {
       const next = { ...prev };
-      if (!tag && !note) delete next[playerId];
-      else next[playerId] = { tag, note };
+      if (!tag && !note && !estimatedLevel) delete next[playerId];
+      else next[playerId] = { tag, note, estimatedLevel };
       localStorage.setItem(storageKey(), JSON.stringify(next));
       return next;
     });
+    // Sincroniza al servidor (best-effort) para que el admin compare adivinado vs real
+    api.post('/players/labels', { targetId: playerId, tag: tag || null, note: note || null, estimatedLevel: estimatedLevel ?? null })
+      .catch(() => {});
   }, []);
 
   return { notes, getNote, saveNote };

@@ -5,6 +5,9 @@ import { LobbyPage } from './pages/LobbyPage';
 import { TablePage } from './pages/TablePage';
 import { HistoryPage } from './pages/HistoryPage';
 import { HandReplayPage } from './pages/HandReplayPage';
+import { AdminBotsPage } from './pages/admin/AdminBotsPage';
+import { AdminTournamentsPage } from './pages/admin/AdminTournamentsPage';
+import { AdminAccuracyPage } from './pages/admin/AdminAccuracyPage';
 
 export default function App() {
   return (
@@ -17,6 +20,9 @@ export default function App() {
             <Route path="/historial" element={<HistoryPage />} />
             <Route path="/replay/:id" element={<HandReplayPage />} />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
+            <Route path="/admin/bots" element={<AdminBotsPage />} />
+            <Route path="/admin/torneos" element={<AdminTournamentsPage />} />
+            <Route path="/admin/precision" element={<AdminAccuracyPage />} />
           </Routes>
         </BrowserRouter>
       </SocketProvider>

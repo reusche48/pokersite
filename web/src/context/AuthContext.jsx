@@ -3,11 +3,22 @@ import api from '../services/api';
 
 const AuthContext = createContext(null);
 
+function tokenIsAdmin() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    return !!JSON.parse(atob(token.split('.')[1])).is_admin;
+  } catch { return false; }
+}
+
 export function AuthProvider({ children }) {
   const [player, setPlayer] = useState(() => {
     try { return JSON.parse(localStorage.getItem('player')); } catch { return null; }
   });
+  const [isAdmin, setIsAdmin] = useState(tokenIsAdmin);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { setIsAdmin(tokenIsAdmin()); }, [player]);
 
   async function guestLogin(nickname) {
     setLoading(true);
@@ -66,7 +77,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ player, loading, guestLogin, login, register, logout, updateChips }}>
+    <AuthContext.Provider value={{ player, isAdmin, loading, guestLogin, login, register, logout, updateChips }}>
       {children}
     </AuthContext.Provider>
   );

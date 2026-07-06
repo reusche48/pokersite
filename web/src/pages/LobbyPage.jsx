@@ -89,10 +89,11 @@ function TableCard({ table, onJoin }) {
 }
 
 export function LobbyPage() {
-  const { player, logout } = useAuth();
+  const { player, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
-  const { connect } = useSocket();
+  const { connect, socket } = useSocket();
   const [tables, setTables] = useState([]);
+  const [tournaments, setTournaments] = useState([]);
   const [showAuth, setShowAuth] = useState(false);
   const [buyInModal, setBuyInModal] = useState(null);
   const [buyIn, setBuyIn] = useState('');
@@ -101,8 +102,15 @@ export function LobbyPage() {
     if (!player) { setShowAuth(true); return; }
     connect();
     fetchTables();
-    const t = setInterval(fetchTables, 10000);
-    return () => clearInterval(t);
+    fetchTournaments();
+    const t = setInterval(() => { fetchTables(); fetchTournaments(); }, 8000);
+
+    // Cuando mi torneo arranca, el server me avisa → entro a la mesa
+    const s = socket?.current;
+    const onStart = ({ tableId }) => { if (tableId) navigate(`/table/${tableId}?buyIn=1500`); };
+    s?.on?.('torneo_iniciado', onStart);
+
+    return () => { clearInterval(t); s?.off?.('torneo_iniciado', onStart); };
   }, [player]);
 
   async function fetchTables() {
@@ -110,6 +118,22 @@ export function LobbyPage() {
       const { data } = await api.get('/tables');
       setTables(data);
     } catch {}
+  }
+
+  async function fetchTournaments() {
+    try {
+      const { data } = await api.get('/tournaments');
+      setTournaments(data);
+    } catch {}
+  }
+
+  async function joinTournament(id) {
+    try {
+      await api.post(`/tournaments/${id}/register`);
+      fetchTournaments();
+    } catch (e) {
+      alert(e.response?.data?.error || 'No se pudo inscribir');
+    }
   }
 
   function handleJoin(table) {
@@ -131,6 +155,7 @@ export function LobbyPage() {
         <h1 className="text-2xl font-bold text-green-400">♠ PokerSite</h1>
         {player && (
           <div className="flex items-center gap-4">
+            {isAdmin && <button onClick={() => navigate('/admin/bots')} className="text-xs text-yellow-400 hover:text-yellow-300 font-bold">⚙️ Admin</button>}
             <button onClick={() => navigate('/historial')} className="text-xs text-sky-400 hover:text-sky-300 font-bold">📜 Mis manos</button>
             <span className="text-sm text-gray-300">{player.nickname}</span>
             <span className="text-sm text-green-400 font-mono">🎮 ${player.play_chips?.toLocaleString()}</span>
@@ -140,6 +165,42 @@ export function LobbyPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Torneos */}
+        {tournaments.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4">🏆 Campeonatos</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {tournaments.map(t => {
+                const mine = t.registrations?.some?.(r => r.player_id === player?.id);
+                const full = t.registered >= t.max_players;
+                const running = t.status === 'running';
+                return (
+                  <div key={t.id} className="bg-gray-800 rounded-2xl p-5 border border-yellow-800/40">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-white text-lg">{t.name}</h3>
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                        {running ? 'En curso' : `${t.registered}/${t.max_players}`}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-300 mb-4">
+                      Buy-in: <span className="text-white font-mono">${t.buy_in}</span>
+                      <span className="mx-2">·</span>
+                      Bote: <span className="text-yellow-400 font-mono">${t.prize_pool}</span>
+                    </div>
+                    <button
+                      onClick={() => joinTournament(t.id)}
+                      disabled={running || full || mine}
+                      className="w-full bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 text-white font-bold py-2 rounded-xl transition-colors"
+                    >
+                      {running ? 'Ya empezó' : mine ? 'Inscrito ✓' : full ? 'Completo' : 'Inscribirme'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <h2 className="text-xl font-bold mb-6">Mesas disponibles</h2>
         {tables.length === 0 ? (
           <div className="text-center text-gray-500 py-20">
