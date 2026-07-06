@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import api from '../../services/api';
 import { AdminNav } from './AdminNav';
 
@@ -12,7 +13,6 @@ export function AdminBotsPage() {
   const [level, setLevel] = useState(7);
   const [count, setCount] = useState(3);
   const [active, setActive] = useState([]);
-  const [msg, setMsg] = useState('');
 
   async function loadTables() {
     try { const { data } = await api.get('/tables'); setTables(data); if (!tableId && data[0]) setTableId(data[0].id); } catch {}
@@ -23,15 +23,18 @@ export function AdminBotsPage() {
   useEffect(() => { loadTables(); loadActive(); const t = setInterval(loadActive, 4000); return () => clearInterval(t); }, []);
 
   async function seat() {
-    setMsg('');
     try {
       const { data } = await api.post('/admin/bots/seat', { tableId, level, count });
-      setMsg(`✅ ${data.seated} bots nivel ${level} sentados`);
+      toast.success(`${data.seated} bots nivel ${level} sentados`);
       loadActive();
-    } catch (e) { setMsg('❌ ' + (e.response?.data?.error || 'Error')); }
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al sentar bots'); }
   }
   async function unseatTable() {
-    try { await api.post('/admin/bots/unseat', { tableId }); loadActive(); } catch {}
+    try {
+      const { data } = await api.post('/admin/bots/unseat', { tableId });
+      toast.success(`${data.removed} bots retirados`);
+      loadActive();
+    } catch { toast.error('Error al retirar bots'); }
   }
 
   const atTable = active.filter(b => b.tableId === tableId);
@@ -73,7 +76,6 @@ export function AdminBotsPage() {
             <button onClick={seat} className="flex-1 bg-green-700 hover:bg-green-600 font-bold py-2 rounded-lg">Sentar bots</button>
             <button onClick={unseatTable} className="bg-red-900 hover:bg-red-800 px-4 py-2 rounded-lg text-sm">Retirar todos de esta mesa</button>
           </div>
-          {msg && <p className="text-sm">{msg}</p>}
         </div>
 
         <div className="flex items-center justify-between mb-2">

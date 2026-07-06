@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import api from '../../services/api';
 import { AdminNav } from './AdminNav';
 
@@ -20,7 +21,6 @@ export function AdminTournamentsPage() {
   const [turbo, setTurbo] = useState(true);
   const [botLevel, setBotLevel] = useState(7);
   const [botCount, setBotCount] = useState(6);
-  const [msg, setMsg] = useState('');
 
   async function load() {
     try { const { data } = await api.get('/tournaments'); setList(data); } catch {}
@@ -28,20 +28,22 @@ export function AdminTournamentsPage() {
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
 
   async function create() {
-    setMsg('');
     try {
       await api.post('/tournaments', { name, maxPlayers, buyIn, blindSchedule: turbo ? TURBO : null });
-      setMsg('✅ Torneo creado');
+      toast.success('Torneo creado');
       load();
-    } catch (e) { setMsg('❌ ' + (e.response?.data?.error || 'Error')); }
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al crear torneo'); }
   }
   async function fill(id) {
-    try { const { data } = await api.post(`/tournaments/${id}/bots`, { level: botLevel, count: botCount }); setMsg(`✅ ${data.added} bots agregados${data.started ? ' — ¡torneo iniciado!' : ''}`); load(); }
-    catch (e) { setMsg('❌ ' + (e.response?.data?.error || 'Error')); }
+    try {
+      const { data } = await api.post(`/tournaments/${id}/bots`, { level: botLevel, count: botCount });
+      toast.success(`${data.added} bots agregados${data.started ? ' — ¡torneo iniciado!' : ''}`);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al agregar bots'); }
   }
   async function start(id) {
-    try { await api.post(`/tournaments/${id}/start`); setMsg('✅ Torneo iniciado'); load(); }
-    catch (e) { setMsg('❌ ' + (e.response?.data?.error || 'Error')); }
+    try { await api.post(`/tournaments/${id}/start`); toast.success('Torneo iniciado'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error al iniciar'); }
   }
 
   return (
@@ -92,8 +94,6 @@ export function AdminTournamentsPage() {
               className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm" />
           </div>
         </div>
-
-        {msg && <p className="text-sm mb-4">{msg}</p>}
 
         {/* Lista */}
         <h2 className="font-bold mb-2">Torneos abiertos / en curso</h2>

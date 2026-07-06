@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { toast } from 'sonner';
 import api from '../services/api';
 import { PlayerSeat } from '../components/table/PlayerSeat';
 import { Board } from '../components/table/Board';
@@ -255,8 +256,9 @@ export function HandReplayPage({ shared = false }) {
       const url = `${window.location.origin}/replay/shared/${data.token}`;
       await navigator.clipboard.writeText(url);
       setShareUrl(url);
+      toast.success('Link copiado al portapapeles — compártelo con quien quieras');
     } catch {
-      setError('No se pudo generar el link');
+      toast.error('No se pudo generar el link');
     }
   }
 

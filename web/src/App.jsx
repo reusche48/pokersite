@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { LobbyPage } from './pages/LobbyPage';
@@ -13,6 +14,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SocketProvider>
+        <Toaster theme="dark" position="top-center" richColors closeButton />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LobbyPage />} />

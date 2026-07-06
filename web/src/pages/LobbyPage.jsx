@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 function NicknameModal({ onClose }) {
   const [nick, setNick] = useState('');
@@ -26,34 +30,41 @@ function NicknameModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm border border-gray-700 shadow-2xl">
-        <h2 className="text-2xl font-bold text-white mb-6 text-center">♠ PokerSite</h2>
-        <div className="flex gap-2 mb-4">
-          {['guest','login','register'].map(m => (
-            <button key={m} onClick={() => setMode(m)}
-              className={`flex-1 text-xs py-2 rounded-lg font-semibold transition-colors ${mode === m ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-              {m === 'guest' ? 'Invitado' : m === 'login' ? 'Iniciar sesión' : 'Registrarse'}
-            </button>
-          ))}
-        </div>
-        <form onSubmit={submit} className="space-y-3">
-          {mode !== 'login' && (
-            <input value={nick} onChange={e => setNick(e.target.value)} placeholder="Nickname" required minLength={2} maxLength={32}
-              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" />
-          )}
-          {mode !== 'guest' && <>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required
-              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña" required minLength={6}
-              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" />
-          </>}
-          {err && <p className="text-red-400 text-sm">{err}</p>}
-          <button type="submit" className="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition-colors">
-            {mode === 'guest' ? 'Entrar como invitado' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
-          </button>
-        </form>
-      </div>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+      <Card className="w-full max-w-sm shadow-2xl">
+        <CardHeader>
+          <CardTitle className="text-2xl text-center">♠ PokerSite</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            {['guest','login','register'].map(m => (
+              <Button
+                key={m}
+                type="button"
+                size="sm"
+                variant={mode === m ? 'default' : 'secondary'}
+                className="flex-1 text-xs"
+                onClick={() => setMode(m)}
+              >
+                {m === 'guest' ? 'Invitado' : m === 'login' ? 'Iniciar sesión' : 'Registrarse'}
+              </Button>
+            ))}
+          </div>
+          <form onSubmit={submit} className="space-y-3">
+            {mode !== 'login' && (
+              <Input value={nick} onChange={e => setNick(e.target.value)} placeholder="Nickname" required minLength={2} maxLength={32} className="h-11" />
+            )}
+            {mode !== 'guest' && <>
+              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="h-11" />
+              <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña" required minLength={6} className="h-11" />
+            </>}
+            {err && <p className="text-red-400 text-sm">{err}</p>}
+            <Button type="submit" className="w-full h-11 font-bold">
+              {mode === 'guest' ? 'Entrar como invitado' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -107,7 +118,11 @@ export function LobbyPage() {
 
     // Cuando mi torneo arranca, el server me avisa → entro a la mesa
     const s = socket?.current;
-    const onStart = ({ tableId }) => { if (tableId) navigate(`/table/${tableId}?buyIn=1500`); };
+    const onStart = ({ tableId }) => {
+      if (!tableId) return;
+      toast.info('🏆 ¡Tu torneo está comenzando! Entrando a la mesa...');
+      navigate(`/table/${tableId}?buyIn=1500`);
+    };
     s?.on?.('torneo_iniciado', onStart);
 
     return () => { clearInterval(t); s?.off?.('torneo_iniciado', onStart); };
@@ -130,9 +145,10 @@ export function LobbyPage() {
   async function joinTournament(id) {
     try {
       await api.post(`/tournaments/${id}/register`);
+      toast.success('¡Inscrito al torneo! Te avisaremos cuando arranque.');
       fetchTournaments();
     } catch (e) {
-      alert(e.response?.data?.error || 'No se pudo inscribir');
+      toast.error(e.response?.data?.error || 'No se pudo inscribir');
     }
   }
 
