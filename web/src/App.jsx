@@ -5,6 +5,7 @@ import { SocketProvider } from './context/SocketContext';
 import { LobbyPage } from './pages/LobbyPage';
 import { TablePage } from './pages/TablePage';
 import { HistoryPage } from './pages/HistoryPage';
+import { StatsPage } from './pages/StatsPage';
 import { HandReplayPage } from './pages/HandReplayPage';
 import { AdminBotsPage } from './pages/admin/AdminBotsPage';
 import { AdminTournamentsPage } from './pages/admin/AdminTournamentsPage';
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/" element={<LobbyPage />} />
             <Route path="/table/:id" element={<TablePage />} />
             <Route path="/historial" element={<HistoryPage />} />
+            <Route path="/estadisticas" element={<StatsPage />} />
             <Route path="/replay/:id" element={<HandReplayPage />} />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
             <Route path="/admin/bots" element={<AdminBotsPage />} />

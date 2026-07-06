@@ -123,7 +123,7 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
         animate={plateAnimate}
         transition={plateTransition}
         onClick={!isMe && onProfileClick ? onProfileClick : undefined}
-        className={`relative rounded-full overflow-hidden ${!isMe && onProfileClick ? 'cursor-pointer hover:brightness-125' : ''}`}
+        className={`relative rounded-full overflow-hidden ${!isMe && onProfileClick ? 'cursor-pointer hover:brightness-125' : ''} ${isWinner ? 'winner-shimmer' : ''}`}
         style={{
           background: isWinner
             ? 'linear-gradient(180deg, #4a3800 0%, #2d2200 100%)'

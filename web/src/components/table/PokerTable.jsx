@@ -18,6 +18,8 @@ import { useSeatCoords } from '../../hooks/useSeatCoords';
 import { useSoundManager } from '../../hooks/useSoundManager';
 import { usePlayerNotes } from '../../hooks/usePlayerNotes';
 import { useAuth } from '../../context/AuthContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 // Predefined layouts — my seat always last = bottom center
 // Seats straddle the table edge (rail), like Full Tilt
@@ -331,31 +333,29 @@ export function PokerTable({ tableId, initialBuyIn }) {
         </div>
 
         {/* Leave confirmation — only shown when leaving mid-hand */}
-        {confirmLeave && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setConfirmLeave(false)}>
-            <div className="bg-gray-900 rounded-2xl p-6 w-[340px] border border-gray-700 shadow-2xl" onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-white text-lg mb-2">¿Salir en plena mano?</h3>
-              <p className="text-sm text-gray-400 mb-5">
+        <Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+          <DialogContent className="w-[360px]">
+            <DialogHeader>
+              <DialogTitle>¿Salir en plena mano?</DialogTitle>
+              <DialogDescription>
                 Estás jugando una mano. Si sales ahora te retiras automáticamente y
                 pierdes lo ya apostado en esta mano. El resto de tu stack vuelve a tu cuenta.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setConfirmLeave(false)}
-                  className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded-lg text-sm"
-                >
-                  Seguir jugando
-                </button>
-                <button
-                  onClick={() => { setConfirmLeave(false); leaveTable(); navigate('/'); }}
-                  className="flex-1 bg-red-900 hover:bg-red-800 text-white py-2 rounded-lg text-sm"
-                >
-                  Salir igualmente
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button className="flex-1 font-bold" onClick={() => setConfirmLeave(false)}>
+                Seguir jugando
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => { setConfirmLeave(false); leaveTable(); navigate('/'); }}
+              >
+                Salir igualmente
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Player profile modal */}
         {profilePlayer && (

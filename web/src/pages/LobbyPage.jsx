@@ -7,6 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
 function NicknameModal({ onClose }) {
   const [nick, setNick] = useState('');
@@ -73,7 +74,7 @@ function TableCard({ table, onJoin }) {
   const seated = table.seated || 0;
   const full = seated >= table.max_seats;
   return (
-    <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 hover:border-green-600 transition-colors">
+    <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 hover:border-green-600 card-hover">
       <div className="flex justify-between items-start mb-3">
         <div>
           <h3 className="font-bold text-white text-lg">{table.name}</h3>
@@ -164,7 +165,7 @@ export function LobbyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-950 text-white lobby-bg">
       {showAuth && <NicknameModal onClose={() => setShowAuth(false)} />}
 
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
@@ -172,6 +173,7 @@ export function LobbyPage() {
         {player && (
           <div className="flex items-center gap-4">
             {isAdmin && <button onClick={() => navigate('/admin/bots')} className="text-xs text-yellow-400 hover:text-yellow-300 font-bold">⚙️ Admin</button>}
+            <button onClick={() => navigate('/estadisticas')} className="text-xs text-green-400 hover:text-green-300 font-bold">📈 Estadísticas</button>
             <button onClick={() => navigate('/historial')} className="text-xs text-sky-400 hover:text-sky-300 font-bold">📜 Mis manos</button>
             <span className="text-sm text-gray-300">{player.nickname}</span>
             <span className="text-sm text-green-400 font-mono">🎮 ${player.play_chips?.toLocaleString()}</span>
@@ -191,7 +193,7 @@ export function LobbyPage() {
                 const full = t.registered >= t.max_players;
                 const running = t.status === 'running';
                 return (
-                  <div key={t.id} className="bg-gray-800 rounded-2xl p-5 border border-yellow-800/40">
+                  <div key={t.id} className="bg-gray-800 rounded-2xl p-5 border border-yellow-800/40 card-hover">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-bold text-white text-lg">{t.name}</h3>
                       <span className={`text-xs px-2 py-1 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
@@ -231,21 +233,28 @@ export function LobbyPage() {
         )}
       </main>
 
-      {buyInModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-2xl p-6 w-80 border border-gray-700">
-            <h3 className="font-bold text-white text-lg mb-4">Unirse a {buyInModal.name}</h3>
-            <label className="text-sm text-gray-400 mb-1 block">Buy-in (${buyInModal.buy_in_min}–${buyInModal.buy_in_max})</label>
-            <input type="number" value={buyIn} onChange={e => setBuyIn(e.target.value)}
-              min={buyInModal.buy_in_min} max={buyInModal.buy_in_max}
-              className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-green-500" />
-            <div className="flex gap-2">
-              <button onClick={() => setBuyInModal(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-xl">Cancelar</button>
-              <button onClick={confirmJoin} className="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded-xl">Entrar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={!!buyInModal} onOpenChange={(open) => { if (!open) setBuyInModal(null); }}>
+        <DialogContent className="w-[340px]">
+          <DialogHeader>
+            <DialogTitle>Unirse a {buyInModal?.name}</DialogTitle>
+            <DialogDescription>
+              Buy-in permitido: ${buyInModal?.buy_in_min}–${buyInModal?.buy_in_max}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="number"
+            value={buyIn}
+            onChange={e => setBuyIn(e.target.value)}
+            min={buyInModal?.buy_in_min}
+            max={buyInModal?.buy_in_max}
+            className="h-11"
+          />
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setBuyInModal(null)}>Cancelar</Button>
+            <Button className="flex-1 font-bold" onClick={confirmJoin}>Entrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

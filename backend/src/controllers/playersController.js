@@ -59,6 +59,55 @@ async function updateAvatar(req, res) {
   res.json({ ok: true });
 }
 
+// ── Estadísticas del jugador (a partir de su historial de manos) ──
+async function getStats(req, res) {
+  const pid = req.player.id;
+  const [rows] = await pool.query(
+    `SELECT actions_json, winners_json, ended_at
+     FROM hand_history
+     WHERE JSON_SEARCH(players_json, 'one', ?, NULL, '$[*].playerId') IS NOT NULL
+     ORDER BY ended_at DESC LIMIT 500`,
+    [pid]
+  );
+  const jp = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
+
+  let wins = 0, totalWon = 0, totalInvested = 0, bestWin = 0;
+  const byDay = new Map(); // 'YYYY-MM-DD' → { hands, net }
+
+  for (const r of rows) {
+    const winners = jp(r.winners_json);
+    const actions = jp(r.actions_json);
+    let won = 0, invested = 0;
+    for (const w of winners) if (w.playerId === pid) won += Number(w.amount) || 0;
+    for (const a of actions) {
+      if (a.playerId === pid && a.action !== 'win' && Number(a.amount) > 0) invested += Number(a.amount);
+    }
+    if (won > 0) { wins++; totalWon += won; if (won > bestWin) bestWin = won; }
+    totalInvested += invested;
+
+    const day = new Date(r.ended_at).toISOString().slice(0, 10);
+    const d = byDay.get(day) || { hands: 0, net: 0 };
+    d.hands++;
+    d.net += won - invested;
+    byDay.set(day, d);
+  }
+
+  const series = [...byDay.entries()]
+    .map(([date, d]) => ({ date, hands: d.hands, net: Math.round(d.net) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  res.json({
+    totalHands: rows.length,
+    wins,
+    winRate: rows.length ? Math.round((wins / rows.length) * 100) : 0,
+    totalWon: Math.round(totalWon),
+    totalInvested: Math.round(totalInvested),
+    net: Math.round(totalWon - totalInvested),
+    bestWin: Math.round(bestWin),
+    series,
+  });
+}
+
 // ── Etiquetas de testers (qué nivel le adivinan a cada jugador/bot) ──
 async function saveLabel(req, res) {
   const { targetId, estimatedLevel, tag, note } = req.body;
@@ -86,4 +135,4 @@ async function getLabels(req, res) {
   res.json(map);
 }
 
-module.exports = { getMe, getHistory, refill, updateAvatar, saveLabel, getLabels };
+module.exports = { getMe, getHistory, refill, updateAvatar, saveLabel, getLabels, getStats };
