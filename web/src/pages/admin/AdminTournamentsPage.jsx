@@ -1,9 +1,24 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../../services/api';
 import { AdminNav } from './AdminNav';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const LEVELS = [5, 6, 7, 8, 9, 10];
+
+// Validación del formulario de crear torneo
+const torneoSchema = z.object({
+  name: z.string().trim().min(3, 'El nombre debe tener al menos 3 caracteres').max(64, 'Máximo 64 caracteres'),
+  maxPlayers: z.coerce.number().int('Debe ser un número entero')
+    .min(2, 'Mínimo 2 jugadores').max(30, 'Máximo 30 jugadores'),
+  buyIn: z.coerce.number().min(0, 'El buy-in no puede ser negativo').max(100000, 'Buy-in demasiado alto'),
+  turbo: z.boolean(),
+});
 // Ciegas turbo (para pruebas rápidas): suben cada 30s
 const TURBO = [
   { smallBlind: 20, bigBlind: 40, minutes: 0.5 },
@@ -15,21 +30,26 @@ const TURBO = [
 
 export function AdminTournamentsPage() {
   const [list, setList] = useState([]);
-  const [name, setName] = useState('Torneo de prueba');
-  const [maxPlayers, setMaxPlayers] = useState(18);
-  const [buyIn, setBuyIn] = useState(100);
-  const [turbo, setTurbo] = useState(true);
   const [botLevel, setBotLevel] = useState(7);
   const [botCount, setBotCount] = useState(6);
+
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
+    resolver: zodResolver(torneoSchema),
+    defaultValues: { name: 'Torneo de prueba', maxPlayers: 18, buyIn: 100, turbo: true },
+  });
+  const turbo = watch('turbo');
 
   async function load() {
     try { const { data } = await api.get('/tournaments'); setList(data); } catch {}
   }
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
 
-  async function create() {
+  async function create(values) {
     try {
-      await api.post('/tournaments', { name, maxPlayers, buyIn, blindSchedule: turbo ? TURBO : null });
+      await api.post('/tournaments', {
+        name: values.name, maxPlayers: values.maxPlayers, buyIn: values.buyIn,
+        blindSchedule: values.turbo ? TURBO : null,
+      });
       toast.success('Torneo creado');
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear torneo'); }
@@ -47,35 +67,40 @@ export function AdminTournamentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <AdminNav />
+    <AdminNav>
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-1">🏆 Torneos Sit&Go</h1>
         <p className="text-sm text-gray-400 mb-6">Crea un campeonato, rellénalo con bots y arranca. Los testers se inscriben desde el lobby.</p>
 
-        {/* Crear */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 space-y-3">
+        {/* Crear — react-hook-form + Zod con errores inline */}
+        <form onSubmit={handleSubmit(create)} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 space-y-3">
           <h2 className="font-bold text-sm">Crear torneo</h2>
           <div className="flex gap-3">
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre"
-              className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm" />
-            <div className="w-28">
-              <label className="text-[10px] text-gray-500 block">Jugadores (2–30)</label>
-              <input type="number" min={2} max={30} value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}
-                className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm" />
+            <div className="flex-1">
+              <Label htmlFor="t-name" className="text-[10px] text-gray-500">Nombre</Label>
+              <Input id="t-name" placeholder="Nombre del torneo" {...register('name')}
+                aria-invalid={!!errors.name} />
+              {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}
             </div>
             <div className="w-28">
-              <label className="text-[10px] text-gray-500 block">Buy-in</label>
-              <input type="number" min={0} value={buyIn} onChange={e => setBuyIn(Number(e.target.value))}
-                className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm" />
+              <Label htmlFor="t-max" className="text-[10px] text-gray-500">Jugadores (2–30)</Label>
+              <Input id="t-max" type="number" {...register('maxPlayers')} aria-invalid={!!errors.maxPlayers} />
+              {errors.maxPlayers && <p className="text-red-400 text-xs mt-1">{errors.maxPlayers.message}</p>}
+            </div>
+            <div className="w-28">
+              <Label htmlFor="t-buyin" className="text-[10px] text-gray-500">Buy-in</Label>
+              <Input id="t-buyin" type="number" {...register('buyIn')} aria-invalid={!!errors.buyIn} />
+              {errors.buyIn && <p className="text-red-400 text-xs mt-1">{errors.buyIn.message}</p>}
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input type="checkbox" checked={turbo} onChange={e => setTurbo(e.target.checked)} />
+            <input type="checkbox" checked={turbo} onChange={e => setValue('turbo', e.target.checked)} />
             Modo turbo (ciegas suben cada 30s — ideal para pruebas)
           </label>
-          <button onClick={create} className="bg-green-700 hover:bg-green-600 font-bold px-5 py-2 rounded-lg text-sm">Crear torneo</button>
-        </div>
+          <Button type="submit" disabled={isSubmitting} className="font-bold">
+            {isSubmitting ? 'Creando...' : 'Crear torneo'}
+          </Button>
+        </form>
 
         {/* Ajustes de relleno con bots */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex items-end gap-3">
@@ -118,6 +143,6 @@ export function AdminTournamentsPage() {
           ))}
         </div>
       </div>
-    </div>
+    </AdminNav>
   );
 }

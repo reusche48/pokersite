@@ -1,10 +1,100 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import {
+  flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable,
+} from '@tanstack/react-table';
 import api from '../../services/api';
 import { AdminNav } from './AdminNav';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const LEVELS = [5, 6, 7, 8, 9, 10];
+
+const LEVEL_COLORS = {
+  5: 'bg-gray-700', 6: 'bg-sky-800', 7: 'bg-green-800',
+  8: 'bg-yellow-700', 9: 'bg-orange-700', 10: 'bg-red-800',
+};
+
+// Tabla de bots activos: orden por columna + búsqueda (TanStack Table)
+function ActiveBotsTable({ bots, tableNameOf }) {
+  const [sorting, setSorting] = useState([{ id: 'level', desc: true }]);
+  const [globalFilter, setGlobalFilter] = useState('');
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: 'nickname',
+      header: 'Bot',
+      cell: ({ getValue }) => <span className="font-medium">{getValue()}</span>,
+    },
+    {
+      accessorKey: 'level',
+      header: 'Nivel',
+      cell: ({ getValue }) => (
+        <Badge className={`${LEVEL_COLORS[getValue()] || 'bg-gray-700'} text-white`}>Nivel {getValue()}</Badge>
+      ),
+    },
+    {
+      accessorKey: 'tableId',
+      header: 'Mesa',
+      cell: ({ getValue }) => <span className="text-gray-400 text-xs">{tableNameOf(getValue())}</span>,
+    },
+  ], [tableNameOf]);
+
+  const table = useReactTable({
+    data: bots,
+    columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+
+  return (
+    <div>
+      <Input
+        placeholder="Buscar bot por nombre..."
+        value={globalFilter}
+        onChange={e => setGlobalFilter(e.target.value)}
+        className="mb-2 max-w-xs"
+      />
+      <div className="rounded-xl border border-gray-800 overflow-hidden">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map(hg => (
+              <TableRow key={hg.id} className="hover:bg-transparent">
+                {hg.headers.map(h => (
+                  <TableHead
+                    key={h.id}
+                    onClick={h.column.getToggleSortingHandler()}
+                    className="cursor-pointer select-none text-gray-400"
+                  >
+                    {flexRender(h.column.columnDef.header, h.getContext())}
+                    {{ asc: ' ↑', desc: ' ↓' }[h.column.getIsSorted()] ?? ''}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length === 0 ? (
+              <TableRow><TableCell colSpan={3} className="text-center text-gray-500 py-6">Sin bots activos.</TableCell></TableRow>
+            ) : table.getRowModel().rows.map(row => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map(cell => (
+                  <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
 
 export function AdminBotsPage() {
   const navigate = useNavigate();
@@ -40,8 +130,7 @@ export function AdminBotsPage() {
   const atTable = active.filter(b => b.tableId === tableId);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <AdminNav />
+    <AdminNav>
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-1">🤖 Sentar bots</h1>
         <p className="text-sm text-gray-400 mb-6">Elige una mesa y llénala con bots del nivel que quieras. Los testers no verán el nivel.</p>
@@ -79,20 +168,14 @@ export function AdminBotsPage() {
         </div>
 
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold">Bots activos en esta mesa ({atTable.length})</h2>
+          <h2 className="font-bold">Bots activos ({active.length}) — {atTable.length} en esta mesa</h2>
           <button onClick={() => navigate(`/table/${tableId}?buyIn=300`)} className="text-xs text-sky-400 hover:text-sky-300">Abrir la mesa →</button>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
-          {atTable.length === 0 ? (
-            <p className="text-sm text-gray-500 p-4 text-center">Sin bots en esta mesa.</p>
-          ) : atTable.map(b => (
-            <div key={b.botId} className="flex items-center justify-between px-4 py-2 text-sm">
-              <span>{b.nickname}</span>
-              <span className="text-xs bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full font-bold">Nivel {b.level}</span>
-            </div>
-          ))}
-        </div>
+        <ActiveBotsTable
+          bots={active}
+          tableNameOf={(id) => tables.find(t => t.id === id)?.name || String(id).slice(0, 8)}
+        />
       </div>
-    </div>
+    </AdminNav>
   );
 }

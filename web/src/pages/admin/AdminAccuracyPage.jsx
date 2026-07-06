@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import api from '../../services/api';
 import { AdminNav } from './AdminNav';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
+
+const chartConfig = {
+  adivinado: { label: 'Adivinado', color: '#eab308' }, // dorado
+  real: { label: 'Real', color: '#22c55e' },           // verde
+};
 
 export function AdminAccuracyPage() {
   const [data, setData] = useState([]);
@@ -10,45 +19,81 @@ export function AdminAccuracyPage() {
     api.get('/admin/labels/accuracy').then(({ data }) => setData(data)).catch(() => setData([])).finally(() => setLoading(false));
   }, []);
 
+  // KPIs globales sobre todos los testers
+  const kpi = useMemo(() => {
+    const total = data.reduce((a, t) => a + t.total, 0);
+    const exactos = data.reduce((a, t) => a + t.exactos, 0);
+    const cerca = data.reduce((a, t) => a + t.cerca, 0);
+    const sumErr = data.reduce((a, t) => a + t.sumaError, 0);
+    return {
+      testers: data.length,
+      total,
+      pctExactos: total ? Math.round((exactos / total) * 100) : 0,
+      pctCerca: total ? Math.round((cerca / total) * 100) : 0,
+      errProm: total ? +(sumErr / total).toFixed(2) : 0,
+    };
+  }, [data]);
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <AdminNav />
-      <div className="max-w-3xl mx-auto px-4 py-6">
+    <AdminNav>
+      <div className="max-w-4xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-1">🎯 Precisión de los testers</h1>
         <p className="text-sm text-gray-400 mb-6">Qué tan bien adivina cada tester el nivel real de los bots que etiquetó.</p>
 
+        {/* KPIs */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Testers', value: kpi.testers },
+            { label: 'Etiquetas de nivel', value: kpi.total },
+            { label: 'Aciertos exactos', value: `${kpi.pctExactos}%` },
+            { label: 'Error promedio', value: `±${kpi.errProm}` },
+          ].map(k => (
+            <Card key={k.label}>
+              <CardHeader className="pb-0">
+                <CardDescription className="text-xs uppercase tracking-wider">{k.label}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-yellow-400">{k.value}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
         {loading ? <p className="text-gray-500">Cargando...</p> : data.length === 0 ? (
           <p className="text-gray-500 text-sm">Todavía no hay etiquetas de nivel. Pide a los testers que perfilen a los bots (nivel estimado) en la mesa.</p>
-        ) : data.map((t, i) => (
-          <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-bold">{t.tester}</h2>
-              <div className="text-xs text-gray-400">
-                <span className="text-green-400 font-bold">{t.exactos}</span> exactos ·
-                <span className="text-yellow-400 font-bold"> {t.cerca}</span> cerca (±1) ·
-                error promedio <span className="font-bold">{t.errorPromedio}</span> · de {t.total}
-              </div>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-xs text-left">
-                  <th className="pb-1">Bot</th><th className="pb-1">Adivinó</th><th className="pb-1">Real</th><th className="pb-1">Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {t.detalle.map((d, j) => (
-                  <tr key={j} className="border-t border-gray-800">
-                    <td className="py-1">{d.bot}</td>
-                    <td className="py-1 font-mono">{d.adivinado}</td>
-                    <td className="py-1 font-mono">{d.real}</td>
-                    <td className={`py-1 font-bold ${d.error === 0 ? 'text-green-400' : d.error === 1 ? 'text-yellow-400' : 'text-red-400'}`}>{d.error === 0 ? '✓' : `±${d.error}`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+        ) : data.map((t, i) => {
+          const chartData = t.detalle.map(d => ({ bot: d.bot.slice(0, 12), adivinado: d.adivinado, real: d.real }));
+          return (
+            <Card key={i} className="mb-5">
+              <CardHeader className="flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>{t.tester}</CardTitle>
+                  <CardDescription>
+                    {t.exactos} exactos · {t.cerca} cerca (±1) · error promedio ±{t.errorPromedio} · {t.total} etiquetas
+                  </CardDescription>
+                </div>
+                <Badge variant={t.errorPromedio <= 1 ? 'default' : 'destructive'} className={t.errorPromedio <= 1 ? 'bg-green-800' : ''}>
+                  {t.errorPromedio <= 0.5 ? 'Lector experto' : t.errorPromedio <= 1 ? 'Buen ojo' : 'Necesita práctica'}
+                </Badge>
+              </CardHeader>
+              <CardContent>
+                {/* Adivinado vs real por bot */}
+                <ChartContainer config={chartConfig} className="h-[220px] w-full">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="#374151" strokeDasharray="3 3" />
+                    <XAxis dataKey="bot" tickLine={false} axisLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
+                    <YAxis domain={[0, 10]} tickLine={false} axisLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Bar dataKey="adivinado" fill="var(--color-adivinado)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="real" fill="var(--color-real)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
-    </div>
+    </AdminNav>
   );
 }
