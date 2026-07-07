@@ -65,6 +65,44 @@ const LAYOUTS = {
   ],
 };
 
+// Layouts para MÓVIL (pantalla vertical): rivales en la mitad superior,
+// héroe abajo, centro despejado para que nadie tape el board ni las cartas.
+const MOBILE_LAYOUTS = {
+  1: [
+    { seat: { top: '84%', left: '50%' }, bet: { top: '68%', left: '50%' } },
+  ],
+  2: [
+    { seat: { top: '11%', left: '50%' }, bet: { top: '28%', left: '50%' } },
+    { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
+  ],
+  3: [
+    { seat: { top: '12%', left: '24%' }, bet: { top: '28%', left: '32%' } },
+    { seat: { top: '12%', left: '76%' }, bet: { top: '28%', left: '68%' } },
+    { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
+  ],
+  4: [
+    { seat: { top: '9%',  left: '50%' }, bet: { top: '24%', left: '50%' } },
+    { seat: { top: '25%', left: '15%' }, bet: { top: '36%', left: '27%' } },
+    { seat: { top: '25%', left: '85%' }, bet: { top: '36%', left: '73%' } },
+    { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
+  ],
+  5: [
+    { seat: { top: '9%',  left: '28%' }, bet: { top: '24%', left: '34%' } },
+    { seat: { top: '9%',  left: '72%' }, bet: { top: '24%', left: '66%' } },
+    { seat: { top: '27%', left: '13%' }, bet: { top: '38%', left: '25%' } },
+    { seat: { top: '27%', left: '87%' }, bet: { top: '38%', left: '75%' } },
+    { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
+  ],
+  6: [
+    { seat: { top: '9%',  left: '27%' }, bet: { top: '23%', left: '33%' } },
+    { seat: { top: '9%',  left: '73%' }, bet: { top: '23%', left: '67%' } },
+    { seat: { top: '26%', left: '13%' }, bet: { top: '37%', left: '25%' } },
+    { seat: { top: '26%', left: '87%' }, bet: { top: '37%', left: '75%' } },
+    { seat: { top: '84%', left: '30%' }, bet: { top: '68%', left: '37%' } },
+    { seat: { top: '84%', left: '70%' }, bet: { top: '68%', left: '63%' } },
+  ],
+};
+
 export function PokerTable({ tableId, initialBuyIn }) {
   const { player } = useAuth();
   const navigate = useNavigate();
@@ -142,7 +180,8 @@ export function PokerTable({ tableId, initialBuyIn }) {
     };
 
     const n = Math.min(occupied.length, 6);
-    const layout = LAYOUTS[n] || LAYOUTS[6];
+    const layoutSet = isMobile ? MOBILE_LAYOUTS : LAYOUTS;
+    const layout = layoutSet[n] || layoutSet[6];
     const order = ASSIGN_ORDER[n] || ASSIGN_ORDER[6];
     const map = new Map();
     circular.forEach((s, i) => {
@@ -150,7 +189,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
       if (slot) map.set(s.position, slot);
     });
     return { seatToVisual: map, occupancyKey: circular.map(s => s.position).join(',') };
-  }, [tableState?.seats?.map(s => s.playerId).join(','), player?.id]);
+  }, [tableState?.seats?.map(s => s.playerId).join(','), player?.id, isMobile]);
 
   const { containerRefCb, getSeatXY, getBetXY, centerXY, ready } = useSeatCoords(seatToVisual);
 
@@ -427,7 +466,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
 
         {/* Live hand info — only while I'm still in the hand */}
         {['active', 'all_in'].includes(mySeat?.status) && (
-          <div className={isMobile ? 'absolute bottom-[80px] left-1/2 -translate-x-1/2 z-30' : 'absolute bottom-[110px] right-3 z-30'}>
+          <div className={isMobile ? 'absolute top-[57%] left-1/2 -translate-x-1/2 z-30 scale-90' : 'absolute bottom-[110px] right-3 z-30'}>
             <HandInfo myCards={myCards} community={tableState.community} phase={tableState.phase} />
           </div>
         )}
