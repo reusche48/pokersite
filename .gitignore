@@ -37,3 +37,6 @@ backend/narrate.js
 Thumbs.db
 *.suo
 *.sw?
+web/genAvatarCatalog.cjs
+avatars-review/
+web/dev-dist/
