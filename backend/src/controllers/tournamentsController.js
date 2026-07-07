@@ -2,11 +2,20 @@
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
-const { startTournament, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings } = require('../engine/tournamentManager');
+const jwt = require('jsonwebtoken');
+const { startTournament, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings, isLateRegOpen, lateJoin } = require('../engine/tournamentManager');
 
 const MAX_FIELD = 30; // hasta 5 mesas de 6
 
-// GET /tournaments  → lista (con nº de inscritos)
+// Jugador desde el token si viene (la ruta de lista es pública)
+function playerFromReq(req) {
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+    return token ? jwt.verify(token, process.env.JWT_SECRET) : null;
+  } catch { return null; }
+}
+
+// GET /tournaments  → lista (con nº de inscritos + mi estado si hay token)
 async function listTournaments(req, res) {
   const [rows] = await pool.query(
     `SELECT t.*, (SELECT COUNT(*) FROM tournament_registrations r WHERE r.tournament_id = t.id) AS registered
@@ -14,7 +23,26 @@ async function listTournaments(req, res) {
      WHERE t.status IN ('registering','running')
      ORDER BY t.created_at DESC LIMIT 50`
   );
-  res.json(rows);
+  const me = playerFromReq(req);
+  let myRegs = new Map();
+  if (me && rows.length) {
+    const ids = rows.map(r => r.id);
+    const [regs] = await pool.query(
+      `SELECT tournament_id, final_position FROM tournament_registrations
+       WHERE player_id = ? AND tournament_id IN (${ids.map(() => '?').join(',')})`,
+      [me.id, ...ids]
+    );
+    myRegs = new Map(regs.map(r => [r.tournament_id, r]));
+  }
+  res.json(rows.map(t => {
+    const reg = myRegs.get(t.id);
+    return {
+      ...t,
+      am_registered: !!reg,
+      my_final_position: reg?.final_position ?? null,
+      late_reg_open: t.status === 'running' ? isLateRegOpen(t.id) : false,
+    };
+  }));
 }
 
 // GET /tournaments/:id  → detalle + inscritos
@@ -132,12 +160,75 @@ async function registerPlayer(tournamentId, playerId) {
   }
 }
 
-// POST /tournaments/:id/register  (el propio jugador)
-async function register(req, res) {
+// Cobra el buy-in y registra/reactiva la inscripción de un late-reg / re-entry.
+// Transaccional: si algo falla, no se descuentan fichas.
+async function chargeLateEntry(t, playerId, reentry) {
+  const buyIn = parseFloat(t.buy_in) || 0;
+  const conn = await pool.getConnection();
   try {
-    const r = await registerPlayer(req.params.id, req.player.id);
+    await conn.beginTransaction();
+    const [[p]] = await conn.query('SELECT play_chips FROM players WHERE id = ? FOR UPDATE', [playerId]);
+    if (!p || p.play_chips < buyIn) throw { http: 400, msg: 'Fichas insuficientes para el buy-in' };
+    await conn.query('UPDATE players SET play_chips = play_chips - ? WHERE id = ?', [buyIn, playerId]);
+    if (reentry) {
+      await conn.query(
+        'UPDATE tournament_registrations SET final_position = NULL, prize_won = NULL WHERE tournament_id = ? AND player_id = ?',
+        [t.id, playerId]
+      );
+    } else {
+      await conn.query('INSERT INTO tournament_registrations (tournament_id, player_id) VALUES (?, ?)', [t.id, playerId]);
+    }
+    await conn.query('UPDATE tournaments SET prize_pool = prize_pool + ? WHERE id = ?', [buyIn, t.id]);
+    await conn.query(
+      `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'tournament_buyin', ?)`,
+      [playerId, -buyIn, t.id]
+    );
+    await conn.commit();
+    return buyIn;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+// POST /tournaments/:id/register  (el propio jugador)
+// Tres caminos: inscripción normal (registering), inscripción tardía y
+// re-entry (running con la ventana de late-reg abierta).
+async function register(req, res) {
+  const tid = req.params.id, pid = req.player.id;
+  try {
+    const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tid]);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+
+    if (t.status === 'running') {
+      if (!isLateRegOpen(tid)) return res.status(400).json({ error: 'La inscripción tardía ya cerró' });
+      const [[reg]] = await pool.query(
+        'SELECT final_position FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]
+      );
+      if (reg && reg.final_position === null) return res.status(400).json({ error: 'Ya estás jugando este torneo' });
+      const reentry = !!reg; // inscrito y eliminado → re-entry
+      const buyIn = await chargeLateEntry(t, pid, reentry);
+      const tableId = lateJoin(tid, pid, req.player.nickname, { reentry, addPrize: buyIn });
+      if (!tableId) {
+        // Sin asiento libre → reembolso completo (con rastro de auditoría)
+        await pool.query('UPDATE players SET play_chips = play_chips + ? WHERE id = ?', [buyIn, pid]);
+        await pool.query('UPDATE tournaments SET prize_pool = prize_pool - ? WHERE id = ?', [buyIn, tid]);
+        // (delta positivo con el mismo reason = reversa del cobro)
+        await pool.query(
+          `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'tournament_buyin', ?)`,
+          [pid, buyIn, tid]
+        );
+        if (!reentry) await pool.query('DELETE FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]);
+        return res.status(400).json({ error: 'No hay asientos libres ahora mismo' });
+      }
+      return res.json({ ok: true, late: true, reentry, tableId });
+    }
+
+    const r = await registerPlayer(tid, pid);
     // Auto-arranque al llenarse
-    if (r.newCount >= r.max) startTournament(req.params.id).catch(e => console.error('[torneo autostart]', e.message));
+    if (r.newCount >= r.max) startTournament(tid).catch(e => console.error('[torneo autostart]', e.message));
     res.json({ ok: true, ...r });
   } catch (e) {
     if (e.http) return res.status(e.http).json({ error: e.msg });

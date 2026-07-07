@@ -502,6 +502,45 @@ function getPlayerTable(tournamentId, playerId) {
   return rt?.seatOf?.get(playerId) || null;
 }
 
+// ── Inscripción tardía y re-entry ──
+const LATE_REG_LEVELS = 3; // se puede entrar/volver hasta antes del nivel 4 de ciegas
+
+function isLateRegOpen(tournamentId) {
+  const rt = runtime.get(tournamentId);
+  return !!rt && rt.blindIdx < LATE_REG_LEVELS && rt.remaining.size >= 1;
+}
+
+// Sienta a un jugador que entra tarde (inscripción tardía o re-entry) en la
+// mesa viva con más asientos libres. Devuelve el tableId o null si no hay sitio.
+// El cobro del buy-in lo hace el controller; aquí solo el estado del torneo.
+function lateJoin(tournamentId, playerId, nickname, { reentry = false, addPrize = 0 } = {}) {
+  const rt = runtime.get(tournamentId);
+  if (!rt || !isLateRegOpen(tournamentId)) return null;
+  const candidates = aliveTables(rt)
+    .filter(t => t.table.seats.some(s => !s.playerId || s.status === 'empty'))
+    .sort((a, b) => a.players.length - b.players.length);
+  const target = candidates[0];
+  if (!target) return null;
+  const seat = tm.seatPlayer(target.table, playerId, nickname, STARTING_STACK);
+  if (!seat) return null;
+  // Si la mesa está en medio de una mano, espera a la siguiente
+  if (target.table.phase !== 'waiting') seat.status = 'sitting_out';
+  rt.remaining.add(playerId);
+  rt.nicks[playerId] = nickname;
+  rt.seatOf.set(playerId, target.id);
+  if (reentry) delete rt.positions[playerId];
+  else rt.totalEntrants += 1;
+  if (addPrize) rt.prizePool += addPrize;
+  updateTournamentInfo(rt);
+  snapshotTournament(tournamentId);
+  emitToPlayer(playerId, 'torneo_iniciado', { tournamentId, tableId: target.id });
+  emitToTable(target.id, 'chat_received', {
+    playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
+    text: reentry ? `🔄 ${nickname} re-entra al torneo` : `🆕 ${nickname} se une al torneo (inscripción tardía)`,
+  });
+  return target.id;
+}
+
 // Clasificación tipo PokerStars: jugadores vivos (con fichas, ordenados de más
 // a menos) y eliminados (con su puesto). No expone nivel de bot.
 function getStandings(tournamentId) {
@@ -533,4 +572,4 @@ function getStandings(tournamentId) {
   };
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings, resumeTournaments };
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings, resumeTournaments, isLateRegOpen, lateJoin };
