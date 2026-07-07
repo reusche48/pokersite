@@ -126,6 +126,7 @@ async function startTournament(tournamentId) {
   };
   runtime.set(tournamentId, rt);
   updateTournamentInfo(rt);
+  snapshotTournament(tournamentId); // snapshot inicial (por si se reinicia enseguida)
 
   await pool.query('UPDATE tournaments SET status = "running", started_at = NOW() WHERE id = ?', [tournamentId]);
   for (const tid of tableIds) {
@@ -151,6 +152,142 @@ function hashInt(s) {
   let h = 0;
   for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) | 0;
   return Math.abs(h);
+}
+
+// ── Persistencia: snapshot del runtime en DB (sobrevive a reinicios) ──
+// Se guarda al terminar cada mano (punto limpio: stacks sin apuestas en vuelo).
+function snapshotTournament(tournamentId) {
+  const rt = runtime.get(tournamentId);
+  if (!rt) return;
+  try {
+    const tables = rt.tableIds.map(tid => {
+      const tb = tm.getTable(tid);
+      if (!tb) return null;
+      return {
+        id: tb.id,
+        name: tb.name,
+        seats: tb.seats
+          .filter(s => s.playerId && rt.remaining.has(s.playerId))
+          .map(s => ({ playerId: s.playerId, nickname: s.nickname, stack: s.stack })),
+      };
+    }).filter(Boolean);
+    const snap = {
+      blindIdx: rt.blindIdx,
+      schedule: rt.schedule,
+      name: rt.name,
+      chipMode: rt.chipMode,
+      prizePool: rt.prizePool,
+      payout: rt.payout,
+      totalEntrants: rt.totalEntrants,
+      nicks: rt.nicks,
+      positions: rt.positions,
+      remaining: [...rt.remaining],
+      seatOf: Object.fromEntries(rt.seatOf),
+      tables,
+    };
+    // Fire-and-forget: no bloquear el juego por la escritura
+    pool.query('UPDATE tournaments SET runtime_json = ? WHERE id = ?', [JSON.stringify(snap), tournamentId])
+      .catch(e => console.error('[torneo snapshot]', e.message));
+  } catch (e) {
+    console.error('[torneo snapshot]', e.message);
+  }
+}
+
+// Rehidratar torneos 'running' tras un reinicio del servidor: recrea mesas con
+// los stacks guardados, re-sienta bots y reanuda ciegas. Los humanos vuelven
+// vía my-table / torneo_iniciado. Torneos running SIN snapshot (fantasmas
+// antiguos) se cierran para limpiar el lobby.
+async function resumeTournaments() {
+  const [rows] = await pool.query("SELECT * FROM tournaments WHERE status = 'running'");
+  for (const t of rows) {
+    const snap = jparse(t.runtime_json, null);
+    if (!snap || !snap.tables?.length || !snap.remaining?.length) {
+      await pool.query("UPDATE tournaments SET status = 'finished', ended_at = NOW() WHERE id = ?", [t.id]);
+      console.log(`[Torneos] "${t.name}" sin snapshot — marcado como finalizado`);
+      continue;
+    }
+    try {
+      const schedule = snap.schedule || jparse(t.blind_schedule_json, DEFAULT_BLINDS);
+      const blindIdx = Math.min(snap.blindIdx || 0, schedule.length - 1);
+      const lvl = schedule[blindIdx];
+
+      // Recrear cada mesa con sus jugadores y stacks
+      for (const tSnap of snap.tables) {
+        tm.createTable({
+          id: tSnap.id, name: tSnap.name, gameType: t.game_type, chipMode: t.chip_mode,
+          maxSeats: TABLE_SIZE, smallBlind: lvl.smallBlind, bigBlind: lvl.bigBlind,
+          buyInMin: STARTING_STACK, buyInMax: STARTING_STACK,
+        });
+        const table = tm.getTable(tSnap.id);
+        table.isTournament = true;
+        table.tournamentId = t.id;
+        table.tournamentOver = false;
+        table.onBust = (busted) => onBust(t.id, busted);
+        table.onHandComplete = () => onHandComplete(t.id, tSnap.id);
+        for (const s of tSnap.seats) {
+          tm.seatPlayer(table, s.playerId, s.nickname, s.stack);
+        }
+      }
+
+      const rt = {
+        tableIds: snap.tables.map(x => x.id),
+        botClients: new Map(),
+        seatOf: new Map(Object.entries(snap.seatOf || {})),
+        blindTimer: null,
+        blindIdx,
+        schedule,
+        remaining: new Set(snap.remaining),
+        positions: snap.positions || {},
+        prizePool: snap.prizePool || parseFloat(t.prize_pool) || 0,
+        payout: snap.payout || jparse(t.payout_json, defaultPayout(snap.totalEntrants || 6)),
+        chipMode: snap.chipMode || t.chip_mode,
+        totalEntrants: snap.totalEntrants || snap.remaining.length,
+        name: snap.name || t.name,
+        id: t.id,
+        nicks: snap.nicks || {},
+      };
+      runtime.set(t.id, rt);
+      updateTournamentInfo(rt);
+
+      // Reconectar los bots vivos (con su nivel/personalidad reales)
+      const ids = [...rt.remaining];
+      const [bots] = await pool.query(
+        `SELECT b.bot_id, b.level, b.personality_json, p.nickname
+         FROM bots b JOIN players p ON p.id = b.bot_id
+         WHERE b.bot_id IN (${ids.map(() => '?').join(',')})`, ids
+      );
+      bots.forEach((r, i) => {
+        setTimeout(() => {
+          const client = new BotClient({
+            botId: r.bot_id, nickname: r.nickname, level: r.level || 5,
+            personality: jparse(r.personality_json, {}),
+            tableId: rt.seatOf.get(r.bot_id), buyIn: STARTING_STACK,
+          });
+          rt.botClients.set(r.bot_id, client);
+        }, i * 120);
+      });
+
+      // Avisar a los humanos conectados dónde está su mesa
+      for (const pid of rt.remaining) {
+        if (!bots.some(b => b.bot_id === pid)) {
+          emitToPlayer(pid, 'torneo_iniciado', { tournamentId: t.id, tableId: rt.seatOf.get(pid) });
+        }
+      }
+
+      // Reanudar ciegas y manos (tras dar tiempo a que conecten los bots)
+      scheduleBlindIncrease(t.id);
+      rt.tableIds.forEach((tid, i) => {
+        setTimeout(() => {
+          try { startHand(tm.getTable(tid)); }
+          catch (e) { console.error('[torneo resume] startHand:', e.message); }
+        }, 4000 + i * 500);
+      });
+
+      console.log(`[Torneos] "${rt.name}" restaurado: ${rt.remaining.size} vivos en ${rt.tableIds.length} mesa(s)`);
+    } catch (e) {
+      console.error(`[Torneos] no se pudo restaurar "${t.name}":`, e.message);
+    }
+  }
 }
 
 // Arma la info del torneo para el HUD y la pega en cada mesa viva.
@@ -317,8 +454,9 @@ async function onHandComplete(tournamentId, completedTableId) {
     return;
   }
 
-  // Si no hay ganador, rebalancear (sincrónico)
+  // Si no hay ganador, rebalancear (sincrónico) y guardar snapshot (punto limpio)
   try { rebalance(rt); } catch (e) { console.error('[torneo] rebalance:', e.message); }
+  snapshotTournament(tournamentId);
 }
 
 // ── Pagos y cierre ──
@@ -344,7 +482,7 @@ async function finalize(tournamentId) {
     }
   }
 
-  await pool.query('UPDATE tournaments SET status = "finished", ended_at = NOW() WHERE id = ?', [tournamentId]);
+  await pool.query('UPDATE tournaments SET status = "finished", ended_at = NOW(), runtime_json = NULL WHERE id = ?', [tournamentId]);
   for (const tid of rt.tableIds) {
     emitToTable(tid, 'torneo_finalizado', { tournamentId, name: tRow?.name, positions: rt.positions });
   }
@@ -395,4 +533,4 @@ function getStandings(tournamentId) {
   };
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings };
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings, resumeTournaments };

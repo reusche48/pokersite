@@ -131,6 +131,13 @@ async function setupDb() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    // Migration: snapshot del runtime del torneo (persistencia ante reinicios)
+    try {
+      await conn.query(`ALTER TABLE tournaments ADD COLUMN runtime_json LONGTEXT NULL`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
     // Bots: el nivel real y la personalidad viven aislados de players
     await conn.query(`CREATE TABLE IF NOT EXISTS bots (
       bot_id           CHAR(36)     NOT NULL,
