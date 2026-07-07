@@ -613,9 +613,16 @@ function runShowdown(table, earlyEnd = false) {
         : `${s.nickname} se quedó sin fichas y deja la mesa`,
     });
   }
-  // Torneo: avisar al manager de las eliminaciones (para final_position) antes de liberar
+  // Torneo: avisar al manager de las eliminaciones (para final_position) antes de liberar.
+  // Se incluye al mayor ganador de la mano (el "cazador") para pagar bounties.
   if (busted.length && table.isTournament && table.onBust) {
-    table.onBust(busted.map(s => ({ playerId: s.playerId, nickname: s.nickname })));
+    const hunter = winners.length
+      ? [...winners].sort((a, b) => (b.amount || 0) - (a.amount || 0))[0]
+      : null;
+    table.onBust(
+      busted.map(s => ({ playerId: s.playerId, nickname: s.nickname })),
+      hunter ? { playerId: hunter.playerId, nickname: hunter.nickname } : null
+    );
   }
   if (busted.length) {
     const bustedIds = busted.map(s => s.playerId);

@@ -83,7 +83,7 @@ async function startTournament(tournamentId) {
     table.tournamentId = tournamentId;
     table.tournamentOver = false;
     table.ante = lvl0.ante || 0;
-    table.onBust = (busted) => onBust(tournamentId, busted);
+    table.onBust = (busted, hunter) => onBust(tournamentId, busted, hunter);
     table.onHandComplete = () => onHandComplete(tournamentId, id);
     tableIds.push(id);
   }
@@ -123,6 +123,7 @@ async function startTournament(tournamentId) {
     totalEntrants: regs.length,
     name: t.name,
     id: tournamentId,
+    bounty: parseFloat(t.bounty) || 0,
     nicks: Object.fromEntries(regs.map(r => [r.player_id, r.nickname])),
   };
   runtime.set(tournamentId, rt);
@@ -175,6 +176,7 @@ function snapshotTournament(tournamentId) {
     const snap = {
       blindIdx: rt.blindIdx,
       schedule: rt.schedule,
+      bounty: rt.bounty || 0,
       name: rt.name,
       chipMode: rt.chipMode,
       prizePool: rt.prizePool,
@@ -224,7 +226,7 @@ async function resumeTournaments() {
         table.tournamentId = t.id;
         table.tournamentOver = false;
         table.ante = lvl.ante || 0;
-        table.onBust = (busted) => onBust(t.id, busted);
+        table.onBust = (busted, hunter) => onBust(t.id, busted, hunter);
         table.onHandComplete = () => onHandComplete(t.id, tSnap.id);
         for (const s of tSnap.seats) {
           tm.seatPlayer(table, s.playerId, s.nickname, s.stack);
@@ -246,6 +248,7 @@ async function resumeTournaments() {
         totalEntrants: snap.totalEntrants || snap.remaining.length,
         name: snap.name || t.name,
         id: t.id,
+        bounty: snap.bounty || parseFloat(t.bounty) || 0,
         nicks: snap.nicks || {},
       };
       runtime.set(t.id, rt);
@@ -423,18 +426,38 @@ function scheduleBlindIncrease(tournamentId) {
 }
 
 // ── Eliminaciones (global) ──
-function onBust(tournamentId, bustedList) {
+function onBust(tournamentId, bustedList, hunter = null) {
   const rt = runtime.get(tournamentId);
   if (!rt) return;
+  let bountiesWon = 0;
   for (const b of bustedList) {
     if (!rt.remaining.has(b.playerId)) continue;
     rt.remaining.delete(b.playerId);
     const pos = rt.remaining.size + 1;
     rt.positions[b.playerId] = pos;
+    if (rt.bounty > 0 && hunter && hunter.playerId !== b.playerId) bountiesWon++;
     for (const tid of rt.tableIds) {
       emitToTable(tid, 'chat_received', {
         playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
         text: `💀 ${b.nickname} eliminado — puesto ${pos} (quedan ${rt.remaining.size})`,
+      });
+    }
+  }
+  // Bounty/KO: el cazador cobra la recompensa por cada cabeza (al instante)
+  if (bountiesWon > 0) {
+    const total = Math.round(rt.bounty * bountiesWon);
+    const chipCol = rt.chipMode === 'real' ? 'real_chips' : 'play_chips';
+    pool.query(`UPDATE players SET ${chipCol} = ${chipCol} + ? WHERE id = ?`, [total, hunter.playerId])
+      .then(() => pool.query(
+        `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'tournament_prize', ?)`,
+        [hunter.playerId, rt.chipMode, total, tournamentId]
+      ))
+      .catch(e => console.error('[torneo bounty]', e.message));
+    emitToPlayer(hunter.playerId, 'chips_updated', { chipMode: rt.chipMode, amount: total });
+    for (const tid of rt.tableIds) {
+      emitToTable(tid, 'chat_received', {
+        playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
+        text: `🎯 ${hunter.nickname} cobra ${bountiesWon > 1 ? `${bountiesWon} recompensas` : 'la recompensa'} (+${total})`,
       });
     }
   }
@@ -472,7 +495,9 @@ async function finalize(tournamentId) {
 
   for (const [playerId, position] of Object.entries(rt.positions)) {
     const frac = rt.payout[position] || 0;
-    const prize = Math.round(rt.prizePool * frac);
+    // Bounty: el campeón cobra también su propia recompensa (estilo KO)
+    const ownBounty = (Number(position) === 1 && rt.bounty > 0) ? Math.round(rt.bounty) : 0;
+    const prize = Math.round(rt.prizePool * frac) + ownBounty;
     await pool.query(
       'UPDATE tournament_registrations SET final_position = ?, prize_won = ? WHERE tournament_id = ? AND player_id = ?',
       [position, prize, tournamentId, playerId]

@@ -124,6 +124,7 @@ export function LobbyPage() {
   const [buyIn, setBuyIn] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now()); // reloj para cuentas regresivas
+  const [joinCode, setJoinCode] = useState(''); // código de mesa privada
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -177,6 +178,28 @@ export function LobbyPage() {
       fetchTournaments();
     } catch (e) {
       toast.error(e.response?.data?.error || 'No se pudo inscribir');
+    }
+  }
+
+  // ── Home games: mesa privada con código ──
+  async function createPrivateTable() {
+    try {
+      const { data } = await api.post('/tables/private', {});
+      toast.success(`Mesa privada creada — código: ${data.inviteCode}`, { duration: 10000 });
+      navigate(`/table/${data.id}?buyIn=${data.buyInMin}`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo crear la mesa');
+    }
+  }
+
+  async function joinByCode() {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    try {
+      const { data } = await api.get(`/tables/by-code/${code}`);
+      navigate(`/table/${data.id}?buyIn=${data.buy_in_min}`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Código no válido');
     }
   }
 
@@ -327,6 +350,37 @@ export function LobbyPage() {
             </div>
           </div>
         )}
+
+        {/* Home games: mesas privadas con código */}
+        <div className="mb-8 bg-gray-800/70 border border-purple-800/40 rounded-2xl p-5">
+          <h2 className="text-lg font-bold mb-1">🏠 Mesa privada (Home Game)</h2>
+          <p className="text-sm text-gray-400 mb-4">Crea tu mesa y comparte el código con tus amigos — no aparece en el lobby.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={createPrivateTable}
+              className="bg-purple-700 hover:bg-purple-600 text-white font-bold px-5 py-2 rounded-xl transition-colors"
+            >
+              + Crear mi mesa privada
+            </button>
+            <span className="text-gray-500 text-sm">o</span>
+            <div className="flex gap-2">
+              <input
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === 'Enter' && joinByCode()}
+                placeholder="CÓDIGO"
+                maxLength={8}
+                className="w-32 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-center font-mono tracking-widest uppercase"
+              />
+              <button
+                onClick={joinByCode}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-xl transition-colors"
+              >
+                Unirme
+              </button>
+            </div>
+          </div>
+        </div>
 
         <h2 className="text-xl font-bold mb-6">Mesas disponibles</h2>
         {tables.length === 0 ? (
