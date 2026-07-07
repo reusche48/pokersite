@@ -295,6 +295,27 @@ export function PokerTable({ tableId, initialBuyIn }) {
         </div>
       </div>
 
+      {/* HUD de torneo — jugadores restantes, nivel de ciegas, premios */}
+      {tableState.tournament && (
+        <div className="flex items-center justify-center gap-1.5 px-2 py-1 text-[11px] font-semibold z-10 bg-purple-950/50 border-b border-purple-800/40 whitespace-nowrap overflow-x-auto">
+          {!isMobile && (
+            <>
+              <span className="text-purple-200">🏆 {tableState.tournament.name || 'Torneo'}</span>
+              <span className="text-purple-700">·</span>
+            </>
+          )}
+          <span className="text-white">👥 {tableState.tournament.remaining}/{tableState.tournament.total}</span>
+          <span className="text-purple-700">·</span>
+          <span className="text-sky-300">⏫ Niv {tableState.tournament.level} ({tableState.tournament.smallBlind}/{tableState.tournament.bigBlind})</span>
+          <span className="text-purple-700">·</span>
+          {tableState.tournament.remaining > tableState.tournament.paidPlaces ? (
+            <span className="text-yellow-300">🏅 {tableState.tournament.remaining - tableState.tournament.paidPlaces} a premios</span>
+          ) : (
+            <span className="text-green-400 font-bold">🏅 ¡EN PREMIOS!</span>
+          )}
+        </div>
+      )}
+
       {/* Main area — table fills the screen, Full Tilt style; bottom strip reserved for floating panels */}
       <div className={`flex-1 relative overflow-hidden min-h-0 pt-1 ${isMobile ? 'px-1 pb-[108px]' : 'px-3 pb-[88px]'}`}>
         <div

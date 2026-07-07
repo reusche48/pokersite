@@ -85,6 +85,8 @@ function publicTableState(table) {
       isSB: s.position === table.sbPosition,
       isBB: s.position === table.bbPosition,
     })),
+    // Info del torneo (si aplica) para el HUD: la actualiza el tournamentManager.
+    tournament: table.tournamentInfo || null,
   };
 }
 

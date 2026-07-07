@@ -120,8 +120,10 @@ async function startTournament(tournamentId) {
     payout: jparse(t.payout_json, defaultPayout(regs.length)),
     chipMode: t.chip_mode,
     totalEntrants: regs.length,
+    name: t.name,
   };
   runtime.set(tournamentId, rt);
+  updateTournamentInfo(rt);
 
   await pool.query('UPDATE tournaments SET status = "running", started_at = NOW() WHERE id = ?', [tournamentId]);
   for (const tid of tableIds) {
@@ -147,6 +149,25 @@ function hashInt(s) {
   let h = 0;
   for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) | 0;
   return Math.abs(h);
+}
+
+// Arma la info del torneo para el HUD y la pega en cada mesa viva.
+function updateTournamentInfo(rt) {
+  if (!rt) return;
+  const lvl = rt.schedule[Math.min(rt.blindIdx, rt.schedule.length - 1)] || {};
+  const info = {
+    name: rt.name || null,
+    remaining: rt.remaining.size,
+    total: rt.totalEntrants,
+    level: rt.blindIdx + 1,
+    smallBlind: lvl.smallBlind,
+    bigBlind: lvl.bigBlind,
+    paidPlaces: Object.keys(rt.payout || {}).length,
+  };
+  for (const tid of rt.tableIds) {
+    const tb = tm.getTable(tid);
+    if (tb) tb.tournamentInfo = info;
+  }
 }
 
 // ── Helpers de mesas vivas ──
@@ -252,6 +273,7 @@ function scheduleBlindIncrease(tournamentId) {
         });
       }
     }
+    updateTournamentInfo(rt2);
     scheduleBlindIncrease(tournamentId);
   }, mins * 60 * 1000);
 }
@@ -272,6 +294,7 @@ function onBust(tournamentId, bustedList) {
       });
     }
   }
+  updateTournamentInfo(rt);
 }
 
 // ── Al completar una mano en una mesa ──
