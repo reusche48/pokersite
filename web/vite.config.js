@@ -34,7 +34,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // bundle grande (DiceBear+charts)
       },
-      devOptions: { enabled: true },
+      // En desarrollo NO registramos el service worker: cacheaba versiones
+      // viejas y no se veían los cambios. En producción (build) sí queda activo.
+      devOptions: { enabled: false },
     }),
   ],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },

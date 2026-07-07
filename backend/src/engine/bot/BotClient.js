@@ -43,7 +43,12 @@ class BotClient {
     this.socket = ioClient(`http://localhost:${PORT}`, {
       auth: { token },
       transports: ['websocket'],
-      reconnection: false,
+      // Reconexión automática: un microcorte ya no mata al bot para siempre.
+      // Al reconectar, el handler 'connect' vuelve a emitir join_table.
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
     this._wire();
   }

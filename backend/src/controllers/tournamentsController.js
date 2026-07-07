@@ -2,7 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
-const { startTournament, DEFAULT_BLINDS, defaultPayout } = require('../engine/tournamentManager');
+const { startTournament, DEFAULT_BLINDS, defaultPayout, getPlayerTable } = require('../engine/tournamentManager');
 
 const MAX_FIELD = 30; // hasta 5 mesas de 6
 
@@ -151,4 +151,11 @@ async function start(req, res) {
   }
 }
 
-module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start };
+// GET /tournaments/:id/my-table  → mesa actual del jugador (para (re)entrar)
+async function myTable(req, res) {
+  const tableId = getPlayerTable(req.params.id, req.player.id);
+  if (!tableId) return res.status(404).json({ error: 'No estás en una mesa activa de este torneo' });
+  res.json({ tableId });
+}
+
+module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable };

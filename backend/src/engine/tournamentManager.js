@@ -331,4 +331,11 @@ async function finalize(tournamentId) {
   }, 8000);
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout };
+// Mesa actual de un jugador en un torneo en curso (para (re)entrar si se perdió
+// el evento torneo_iniciado). Devuelve el tableId o null.
+function getPlayerTable(tournamentId, playerId) {
+  const rt = runtime.get(tournamentId);
+  return rt?.seatOf?.get(playerId) || null;
+}
+
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable };

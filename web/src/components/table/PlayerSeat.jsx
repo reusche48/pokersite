@@ -20,7 +20,7 @@ function ThinkingDots() {
   );
 }
 
-export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = [], revealedCards, isWinner, cardsOnTop = false, playerNote, onProfileClick }) {
+export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = [], revealedCards, isWinner, cardsBelow = false, playerNote, onProfileClick }) {
   if (seat.status === 'empty' || !seat.playerId) {
     return null;
   }
@@ -54,6 +54,13 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
     showFaceUp = false;
   }
 
+  // Abanico: las cartas boca abajo de un rival van giradas y superpuestas
+  // (como en las mesas pro). No aplica a mis cartas ni a un showdown revelado.
+  const isFan = !isMe && !showFaceUp && displayCards.length > 1;
+  const fanStyle = (i) => isFan
+    ? { transform: `rotate(${i === 0 ? -10 : 10}deg) scale(0.9)`, transformOrigin: 'bottom center', marginLeft: i > 0 ? -16 : 0, zIndex: i }
+    : {};
+
   const winnerCardGlow = isWinner && showFaceUp
     ? 'ring-2 ring-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.7)]'
     : '';
@@ -71,6 +78,40 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
       ? { duration: 0.5, repeat: 3 }
       : { duration: 0.3 };
 
+  // Color del aro del avatar según estado
+  const ringColor = (isActionRequired || isWinner)
+    ? '#facc15'
+    : isMe
+      ? '#3b82f6'
+      : 'rgba(120,150,190,0.5)';
+  const avatarSize = isMe ? 66 : 58;
+  const cardTuck = Math.round(avatarSize * 0.4);
+
+  // Bloque de cartas en abanico. Se coloca ENCIMA del avatar por defecto, o
+  // DEBAJO (hacia el centro) para los asientos de arriba, así no se cortan
+  // contra el borde superior de la mesa.
+  const cardsBlock = displayCards.length > 0 ? (
+    <div
+      className={`flex relative z-0 ${isFan ? 'items-end' : 'gap-0.5'}`}
+      style={cardsBelow ? { marginTop: 2 } : { marginBottom: -cardTuck }}
+    >
+      {displayCards.map((card, i) => (
+        <motion.div
+          key={`${seat.playerId}-card-${i}-${showFaceUp ? 'up' : 'down'}`}
+          initial={hasReveal ? { rotateY: 180, scale: 0.7 } : false}
+          animate={hasReveal ? { rotateY: 0, scale: 1 } : {}}
+          whileHover={isMe && showFaceUp ? { y: -8, scale: 1.1 } : {}}
+          transition={{ duration: hasReveal ? 0.7 : 0.2, delay: hasReveal ? i * 0.2 : 0, ease: 'easeOut' }}
+          style={{ perspective: 800, ...fanStyle(i) }}
+        >
+          <div className={`rounded-md ${winnerCardGlow} transition-shadow duration-500`}>
+            <PlayingCard card={showFaceUp ? card : null} faceDown={!showFaceUp} small={!isMe} />
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className={`relative flex flex-col items-center ${isFolded ? 'opacity-40' : ''}`}>
       {/* Floating emojis */}
@@ -78,150 +119,119 @@ export function PlayerSeat({ seat, myCards, isMe, isActionRequired, reactions = 
         {myReactions.map(r => <EmojiFloat key={r.id} emoji={r.emoji} />)}
       </AnimatePresence>
 
-      {/* Cards ABOVE nameplate for top-half seats (avoids board overlap) */}
-      {cardsOnTop && displayCards.length > 0 && (
-        <div className="flex gap-0.5 mb-1 relative z-10">
-          {displayCards.map((card, i) => (
-            <motion.div
-              key={`${seat.playerId}-tcard-${i}-${showFaceUp ? 'up' : 'down'}`}
-              initial={hasReveal ? { rotateY: 180, scale: 0.7 } : false}
-              animate={hasReveal ? { rotateY: 0, scale: 1 } : {}}
-              transition={{ duration: hasReveal ? 0.7 : 0.2, delay: hasReveal ? i * 0.2 : 0, ease: 'easeOut' }}
-              style={{ perspective: 800 }}
-            >
-              <div className={`rounded-md ${winnerCardGlow} transition-shadow duration-500`}>
-                <PlayingCard card={showFaceUp ? card : null} faceDown={!showFaceUp} small />
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
+      {/* Cartas arriba del avatar (asientos normales) */}
+      {!cardsBelow && cardsBlock}
 
-      {/* Profile tag badge — my read on this player */}
-      {noteTag && !isMe && (
+      {/* Avatar circular grande con aro de estado */}
+      <div className="relative z-10">
+        {/* Base de asiento — ancla visualmente al jugador (no "flota") */}
         <div
-          className="absolute -top-2 -right-2 z-20 w-6 h-6 rounded-full flex items-center justify-center text-sm shadow-lg"
-          style={{ background: noteTag.color, border: '2px solid rgba(0,0,0,0.4)' }}
-          title={`${noteTag.label}${playerNote.note ? ` — ${playerNote.note}` : ''}`}
+          className="absolute inset-0 -m-2 rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(30,18,42,0.7) 55%, rgba(20,12,28,0.35) 80%, transparent 100%)',
+            boxShadow: 'inset 0 0 0 1px rgba(160,110,200,0.35)',
+          }}
+        />
+        <motion.div
+          animate={plateAnimate}
+          transition={plateTransition}
+          onClick={!isMe && onProfileClick ? onProfileClick : undefined}
+          className={`rounded-full p-1 ${!isMe && onProfileClick ? 'cursor-pointer hover:brightness-110' : ''}`}
+          style={{ background: ringColor }}
         >
-          {noteTag.emoji}
-        </div>
-      )}
+          <div className="rounded-full overflow-hidden" style={{ background: '#0c1118' }}>
+            <Avatar nickname={seat.nickname} avatarConfig={seat.avatarConfig} state={avatarState} size={avatarSize} />
+          </div>
+        </motion.div>
 
-      {/* Estimated-level badge — my guess of this player's skill */}
-      {!isMe && playerNote?.estimatedLevel && (
-        <div
-          className="absolute -top-2 -left-2 z-20 min-w-[24px] h-6 px-1 rounded-full flex items-center justify-center text-[10px] font-black text-black shadow-lg bg-yellow-500 border-2 border-black/40"
-          title={`Nivel estimado: ${playerNote.estimatedLevel}`}
-        >
-          Nv{playerNote.estimatedLevel}
-        </div>
-      )}
+        {/* Ciega (SB/BB) — pegada al avatar */}
+        {(seat.isSB || seat.isBB) && (
+          <span className={`absolute bottom-0 right-0 w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center border border-black/40 ${
+            seat.isSB ? 'bg-blue-600' : 'bg-purple-600'
+          }`}>
+            {seat.isSB ? 'S' : 'B'}
+          </span>
+        )}
 
-      {/* Name plate (click an opponent to profile them) */}
-      <motion.div
-        animate={plateAnimate}
-        transition={plateTransition}
-        onClick={!isMe && onProfileClick ? onProfileClick : undefined}
-        className={`relative rounded-full overflow-hidden ${!isMe && onProfileClick ? 'cursor-pointer hover:brightness-125' : ''} ${isWinner ? 'winner-shimmer' : ''}`}
+        {/* Etiqueta de perfil */}
+        {noteTag && !isMe && (
+          <div
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] shadow-lg"
+            style={{ background: noteTag.color, border: '2px solid rgba(0,0,0,0.4)' }}
+            title={`${noteTag.label}${playerNote.note ? ` — ${playerNote.note}` : ''}`}
+          >
+            {noteTag.emoji}
+          </div>
+        )}
+
+        {/* Nivel estimado */}
+        {!isMe && playerNote?.estimatedLevel && (
+          <div
+            className="absolute -top-1 -left-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[9px] font-black text-black shadow-lg bg-yellow-500 border border-black/40"
+            title={`Nivel estimado: ${playerNote.estimatedLevel}`}
+          >
+            Nv{playerNote.estimatedLevel}
+          </div>
+        )}
+      </div>
+
+      {/* Pestaña de nombre + fichas (debajo del avatar) */}
+      <div
+        className="relative -mt-3 z-20 rounded-md px-2 py-0 flex flex-col items-center overflow-hidden"
         style={{
+          minWidth: '52px',
+          maxWidth: '112px',
           background: isWinner
             ? 'linear-gradient(180deg, #4a3800 0%, #2d2200 100%)'
             : isMe
               ? 'linear-gradient(180deg, #14306e 0%, #081a3e 100%)'
               : 'linear-gradient(180deg, #1d2733 0%, #0c1118 100%)',
-          minWidth: '108px',
-          maxWidth: '140px',
-          border: isActionRequired
-            ? '2px solid rgba(250,204,21,0.8)'
-            : noteTag && !isMe
-              ? `2px solid ${noteTag.color}88`
-              : '2px solid rgba(120,150,190,0.45)',
+          border: `1px solid ${isActionRequired ? 'rgba(250,204,21,0.8)' : 'rgba(120,150,190,0.4)'}`,
         }}
       >
-        {/* Action timer bar */}
+        <span className={`flex items-center text-[11px] font-bold truncate max-w-[110px] leading-tight ${
+          isWinner ? 'text-yellow-400' : isMe ? 'text-yellow-300' : 'text-white'
+        }`}>
+          {isWinner ? '👑 ' : ''}{seat.nickname}
+          {isActionRequired && !isMe && <ThinkingDots />}
+        </span>
+        <span className="text-[11px] font-mono text-green-400 font-bold leading-tight">
+          <AnimatedNumber value={seat.stack || 0} />
+        </span>
+        {/* Barra de tiempo de turno */}
         {isActionRequired && (
           <motion.div
-            className="absolute top-0 left-0 h-[3px] bg-yellow-400"
+            className="absolute bottom-0 left-0 h-[3px] bg-yellow-400"
             initial={{ width: '100%' }}
             animate={{ width: '0%' }}
             transition={{ duration: 30, ease: 'linear' }}
           />
         )}
+      </div>
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1">
-          <Avatar nickname={seat.nickname} avatarConfig={seat.avatarConfig} state={avatarState} size={26} />
-          <div className="flex flex-col min-w-0 items-center flex-1">
-            <span className={`flex items-center text-xs font-bold truncate max-w-[80px] ${
-              isWinner ? 'text-yellow-400' : isMe ? 'text-yellow-300' : 'text-white'
-            }`}>
-              {isWinner ? '👑 ' : ''}{seat.nickname}
-              {isActionRequired && !isMe && <ThinkingDots />}
-            </span>
-            <span className="text-xs font-mono text-green-400 font-bold">
-              <AnimatedNumber value={seat.stack || 0} />
-            </span>
-          </div>
-          {/* Blind badge inside the plate — never floats over the board */}
-          {(seat.isSB || seat.isBB) && (
-            <span className={`w-4 h-4 rounded-full text-white text-[8px] font-bold flex items-center justify-center flex-shrink-0 ${
-              seat.isSB ? 'bg-blue-600' : 'bg-purple-600'
-            }`}>
-              {seat.isSB ? 'S' : 'B'}
-            </span>
-          )}
-        </div>
-
-        {/* Status badge */}
-        {seat.status === 'all_in' && (
-          <div className="bg-red-600 text-white text-[9px] font-black text-center py-0.5 tracking-wider">
-            ALL IN
-          </div>
-        )}
-        {isFolded && (
-          <div className="bg-gray-700 text-gray-400 text-[9px] font-bold text-center py-0.5">
-            RETIRADO
-          </div>
-        )}
-        {isWinner && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="bg-yellow-600 text-black text-[9px] font-black text-center py-0.5 tracking-wider"
-          >
-            GANADOR
-          </motion.div>
-        )}
-      </motion.div>
-
-      {/* My cards: LEFT of the nameplate (action panel sits bottom-right and would cover them below).
-          Other bottom-half players: cards below as usual. */}
-      {!cardsOnTop && displayCards.length > 0 && (
-        <div
-          className={`flex gap-0.5 z-10 ${
-            isMe ? 'absolute right-full top-0 mr-2' : 'relative mt-1'
-          }`}
-        >
-          {displayCards.map((card, i) => (
-            <motion.div
-              key={`${seat.playerId}-card-${i}-${showFaceUp ? 'up' : 'down'}`}
-              initial={hasReveal ? { rotateY: 180, scale: 0.7 } : false}
-              animate={hasReveal ? { rotateY: 0, scale: 1 } : {}}
-              whileHover={isMe && showFaceUp ? { y: -8, scale: 1.1 } : {}}
-              transition={{ duration: hasReveal ? 0.7 : 0.2, delay: hasReveal ? i * 0.2 : 0, ease: 'easeOut' }}
-              style={{ perspective: 800 }}
-            >
-              <div className={`rounded-md ${winnerCardGlow} transition-shadow duration-500`}>
-                <PlayingCard
-                  card={showFaceUp ? card : null}
-                  faceDown={!showFaceUp}
-                  small={!isMe}
-                />
-              </div>
-            </motion.div>
-          ))}
+      {/* Estados */}
+      {seat.status === 'all_in' && (
+        <div className="mt-0.5 bg-red-600 text-white text-[9px] font-black text-center px-2 py-0.5 rounded tracking-wider">
+          ALL IN
         </div>
       )}
+      {isFolded && (
+        <div className="mt-0.5 bg-gray-700 text-gray-400 text-[9px] font-bold text-center px-2 py-0.5 rounded">
+          RETIRADO
+        </div>
+      )}
+      {isWinner && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-0.5 bg-yellow-600 text-black text-[9px] font-black text-center px-2 py-0.5 rounded tracking-wider"
+        >
+          GANADOR
+        </motion.div>
+      )}
+
+      {/* Cartas hacia abajo (asientos de arriba): debajo del nombre, visibles */}
+      {cardsBelow && cardsBlock}
     </div>
   );
 }

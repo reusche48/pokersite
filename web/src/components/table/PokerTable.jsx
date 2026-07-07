@@ -82,26 +82,49 @@ const MOBILE_LAYOUTS = {
   ],
   4: [
     { seat: { top: '9%',  left: '50%' }, bet: { top: '24%', left: '50%' } },
-    { seat: { top: '25%', left: '15%' }, bet: { top: '36%', left: '27%' } },
-    { seat: { top: '25%', left: '85%' }, bet: { top: '36%', left: '73%' } },
+    { seat: { top: '27%', left: '19%' }, bet: { top: '38%', left: '30%' } },
+    { seat: { top: '27%', left: '81%' }, bet: { top: '38%', left: '70%' } },
     { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
   ],
   5: [
-    { seat: { top: '9%',  left: '28%' }, bet: { top: '24%', left: '34%' } },
-    { seat: { top: '9%',  left: '72%' }, bet: { top: '24%', left: '66%' } },
-    { seat: { top: '27%', left: '13%' }, bet: { top: '38%', left: '25%' } },
-    { seat: { top: '27%', left: '87%' }, bet: { top: '38%', left: '75%' } },
+    { seat: { top: '9%',  left: '30%' }, bet: { top: '24%', left: '36%' } },
+    { seat: { top: '9%',  left: '70%' }, bet: { top: '24%', left: '64%' } },
+    { seat: { top: '30%', left: '18%' }, bet: { top: '40%', left: '29%' } },
+    { seat: { top: '30%', left: '82%' }, bet: { top: '40%', left: '71%' } },
     { seat: { top: '84%', left: '50%' }, bet: { top: '67%', left: '50%' } },
   ],
   6: [
-    { seat: { top: '9%',  left: '27%' }, bet: { top: '23%', left: '33%' } },
-    { seat: { top: '9%',  left: '73%' }, bet: { top: '23%', left: '67%' } },
-    { seat: { top: '26%', left: '13%' }, bet: { top: '37%', left: '25%' } },
-    { seat: { top: '26%', left: '87%' }, bet: { top: '37%', left: '75%' } },
-    { seat: { top: '84%', left: '30%' }, bet: { top: '68%', left: '37%' } },
-    { seat: { top: '84%', left: '70%' }, bet: { top: '68%', left: '63%' } },
+    { seat: { top: '9%',  left: '29%' }, bet: { top: '23%', left: '35%' } },
+    { seat: { top: '9%',  left: '71%' }, bet: { top: '23%', left: '65%' } },
+    { seat: { top: '29%', left: '18%' }, bet: { top: '39%', left: '29%' } },
+    { seat: { top: '29%', left: '82%' }, bet: { top: '39%', left: '71%' } },
+    { seat: { top: '84%', left: '32%' }, bet: { top: '68%', left: '38%' } },
+    { seat: { top: '84%', left: '68%' }, bet: { top: '68%', left: '62%' } },
   ],
 };
+
+// Coloca los asientos sobre el BORDE del óvalo con trigonometría (cos/sin).
+// Así quedan pegados al riel y nunca invaden el centro (board/bote), sin
+// importar el tamaño del avatar ni lo angosto de la pantalla del celular.
+// Devuelve slots en orden circular: [héroe, rival1, rival2, ...].
+function buildMobileOval(n) {
+  const RX = 43, RY = 37, A = 118; // radios (%) y semi-arco de los rivales (pegados al riel, sin cortarse)
+  const rad = (d) => (d * Math.PI) / 180;
+  const at = (deg, rx, ry) => ({
+    left: `${(50 + rx * Math.cos(rad(deg))).toFixed(1)}%`,
+    top: `${(50 + ry * Math.sin(rad(deg))).toFixed(1)}%`,
+  });
+  // Héroe fijo abajo-centro, pero suficientemente arriba para NO quedar
+  // tapado por la barra de acción (avatar grande + cartas + nombre).
+  const slots = [{ seat: { top: '88%', left: '50%' }, bet: { top: '72%', left: '50%' } }];
+  const r = n - 1; // rivales
+  for (let i = 0; i < r; i++) {
+    // Repartidos en el arco superior (centrado en el tope = 270°), de lado a lado.
+    const deg = r === 1 ? 270 : (270 - A) + i * ((2 * A) / (r - 1));
+    slots.push({ seat: at(deg, RX, RY), bet: at(deg, RX * 0.58, RY * 0.58) });
+  }
+  return slots;
+}
 
 export function PokerTable({ tableId, initialBuyIn }) {
   const { player } = useAuth();
@@ -118,6 +141,16 @@ export function PokerTable({ tableId, initialBuyIn }) {
   const [cinema, setCinema] = useState(false); // modo cine durante el run-out de all-in
   const [chatOpen, setChatOpen] = useState(false); // cajón de chat en móvil
   const isMobile = useIsMobile();
+  // Escala de los asientos: en móvil se adapta al ancho real de la pantalla.
+  // Celular chico ≈ 0.8; tablet grande sube hasta ≈ 1.25 (cartas/avatares más grandes).
+  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 400);
+  useEffect(() => {
+    const on = () => setVw(window.innerWidth);
+    window.addEventListener('resize', on);
+    window.addEventListener('orientationchange', on);
+    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
+  }, []);
+  const seatScale = isMobile ? Math.min(1.4, Math.max(0.85, vw / 680)) : 1;
 
   // Leaving mid-hand costs you the hand — confirm first
   function requestLeave() {
@@ -179,15 +212,20 @@ export function PokerTable({ tableId, initialBuyIn }) {
       6: [5, 4, 3, 0, 1, 2],
     };
 
-    const n = Math.min(occupied.length, 6);
-    const layoutSet = isMobile ? MOBILE_LAYOUTS : LAYOUTS;
-    const layout = layoutSet[n] || layoutSet[6];
-    const order = ASSIGN_ORDER[n] || ASSIGN_ORDER[6];
+    // Asientos FIJOS anclados a la mesa: se mapean TODAS las sillas (maxSeats),
+    // ocupadas o vacías, girando el óvalo para que el héroe quede abajo.
+    const maxSeats = Math.min(seats.length || 6, 6);
+    const heroIdx = seats.findIndex(s => s.playerId === player?.id);
+    const heroRef = heroIdx >= 0 ? heroIdx : 0; // sin sentarme → posición 0 abajo
     const map = new Map();
-    circular.forEach((s, i) => {
-      const slot = layout[order[i]];
-      if (slot) map.set(s.position, slot);
-    });
+    const slots = isMobile ? buildMobileOval(maxSeats) : null;
+    const layout = isMobile ? null : (LAYOUTS[maxSeats] || LAYOUTS[6]);
+    const order = isMobile ? null : (ASSIGN_ORDER[maxSeats] || ASSIGN_ORDER[6]);
+    for (let p = 0; p < maxSeats; p++) {
+      const offset = ((p - heroRef) % maxSeats + maxSeats) % maxSeats;
+      const slot = isMobile ? slots[offset] : layout[order[offset]];
+      if (slot) map.set(p, slot);
+    }
     return { seatToVisual: map, occupancyKey: circular.map(s => s.position).join(',') };
   }, [tableState?.seats?.map(s => s.playerId).join(','), player?.id, isMobile]);
 
@@ -196,7 +234,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
   if (!tableState) {
     if (joinError) {
       return (
-        <div className="flex items-center justify-center h-screen bg-[#1a3a1a] text-white">
+        <div className="flex items-center justify-center h-screen bg-[#0c0812] text-white">
           <div className="bg-gray-900 rounded-2xl p-6 w-[380px] border border-red-800 text-center">
             <div className="text-4xl mb-3">🚫</div>
             <h3 className="font-bold text-lg mb-2">No puedes unirte</h3>
@@ -212,7 +250,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
       );
     }
     return (
-      <div className="flex items-center justify-center h-screen bg-[#1a3a1a] text-green-200 text-xl">
+      <div className="flex items-center justify-center h-screen bg-[#0c0812] text-green-200 text-xl">
         <div className="text-center">
           <div className="text-5xl mb-4 animate-pulse">♠</div>
           Conectando a la mesa...
@@ -232,11 +270,12 @@ export function PokerTable({ tableId, initialBuyIn }) {
   }
 
   return (
-    <div className="h-screen flex flex-col" style={{
+    <div className="flex flex-col" style={{
+      height: '100dvh',
       background: `
-        radial-gradient(ellipse at 50% 30%, rgba(120,20,30,0.35) 0%, transparent 60%),
-        repeating-linear-gradient(45deg, #3d0e14 0, #3d0e14 2px, #350c11 2px, #350c11 14px),
-        #350c11
+        radial-gradient(ellipse at 50% 25%, rgba(150,40,200,0.28) 0%, transparent 55%),
+        radial-gradient(ellipse at 50% 90%, rgba(90,20,140,0.22) 0%, transparent 55%),
+        #0c0812
       `,
     }}>
 
@@ -257,31 +296,34 @@ export function PokerTable({ tableId, initialBuyIn }) {
       </div>
 
       {/* Main area — table fills the screen, Full Tilt style; bottom strip reserved for floating panels */}
-      <div className={`flex-1 relative overflow-hidden min-h-0 pt-1 ${isMobile ? 'px-1 pb-[76px]' : 'px-3 pb-[88px]'}`}>
-        <div ref={containerRefCb} className="relative w-full h-full">
+      <div className={`flex-1 relative overflow-hidden min-h-0 pt-1 ${isMobile ? 'px-1 pb-[108px]' : 'px-3 pb-[88px]'}`}>
+        <div
+          ref={containerRefCb}
+          className="relative w-full h-full"
+        >
 
-          {/* Wood rail — stadium shape (straight sides, round ends) like a real table */}
+          {/* Riel neón morado — forma estadio (lados rectos, extremos redondos) */}
           <div
             className="absolute inset-0 rounded-full"
             style={{
-              background: 'linear-gradient(180deg, #5d3a1a 0%, #8b5e34 15%, #6d4420 50%, #5d3a1a 85%, #4a2e15 100%)',
-              boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.6)',
+              background: 'linear-gradient(180deg, #b14ee0 0%, #8a2be2 12%, #6a1fb0 50%, #4a1580 85%, #3a1066 100%)',
+              boxShadow: '0 0 24px 4px rgba(160,60,220,0.55), inset 0 2px 12px rgba(0,0,0,0.5), 0 10px 36px rgba(0,0,0,0.7)',
             }}
           />
 
-          {/* Green felt */}
+          {/* Fieltro oscuro */}
           <div
             className="absolute rounded-full"
             style={{
               top: '7%', left: '3.5%', right: '3.5%', bottom: '7%',
-              background: 'radial-gradient(ellipse at 50% 40%, #2e7d32 0%, #1b5e20 40%, #145214 100%)',
-              boxShadow: 'inset 0 2px 20px rgba(0,0,0,0.3)',
+              background: 'radial-gradient(ellipse at 50% 40%, #241a2e 0%, #1a1222 45%, #120b18 100%)',
+              boxShadow: 'inset 0 2px 26px rgba(0,0,0,0.6)',
             }}
           />
 
-          {/* Inner rim line */}
+          {/* Línea de borde interior */}
           <div
-            className="absolute rounded-full border-2 border-green-400/15"
+            className="absolute rounded-full border-2 border-fuchsia-400/20"
             style={{ top: '12%', left: '6.5%', right: '6.5%', bottom: '12%' }}
           />
 
@@ -289,7 +331,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
             <span className="font-black tracking-widest" style={{
               fontSize: 'clamp(28px, 5vw, 52px)',
-              color: 'rgba(255,255,255,0.05)',
+              color: 'rgba(200,120,240,0.07)',
               transform: 'translateY(-10%)',
             }}>
               ♠ POKERSITE
@@ -330,6 +372,32 @@ export function PokerTable({ tableId, initialBuyIn }) {
             })}
           </AnimatePresence>
 
+          {/* Sillas FIJAS vacías — ancladas a la mesa (pods "Libre") */}
+          {tableState.seats.map((seat, i) => {
+            if (seat.playerId || !seatToVisual.get(i)) return null;
+            const pos = getVisualPosition(i);
+            return (
+              <motion.div
+                key={`empty-${i}`}
+                className="absolute z-0 pointer-events-none"
+                style={{ ...pos }}
+                animate={{ scale: seatScale }}
+                transformTemplate={(t) => `translate(-50%, -50%) scale(${t.scale ?? 1})`}
+              >
+                <div
+                  className="rounded-full flex items-center justify-center"
+                  style={{
+                    width: 66, height: 66,
+                    background: 'radial-gradient(circle, rgba(30,18,42,0.5) 55%, transparent 100%)',
+                    border: '2px dashed rgba(160,110,200,0.28)',
+                  }}
+                >
+                  <span className="text-[9px] font-semibold" style={{ color: 'rgba(200,160,230,0.5)' }}>Libre</span>
+                </div>
+              </motion.div>
+            );
+          })}
+
           {/* Player seats with enter/exit transitions */}
           <AnimatePresence>
             {tableState.seats.map((seat, i) => {
@@ -339,16 +407,18 @@ export function PokerTable({ tableId, initialBuyIn }) {
               // Side seats: cards above (clear of chat/panels).
               // Hero: cards beside the plate (handled via isMe).
               const topPct = parseFloat(visualPos.top);
-              const cardsOnTop = topPct >= 25 && topPct < 80;
+              // Asientos de arriba (cerca del borde superior): cartas hacia abajo.
+              const cardsBelow = topPct < 22;
               return (
                 <motion.div
                   key={seat.playerId}
                   className="absolute z-10"
-                  style={{ ...visualPos, transform: 'translate(-50%, -50%)' }}
+                  style={{ ...visualPos }}
                   initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: isMobile ? 0.78 : 1 }}
+                  animate={{ opacity: 1, scale: seatScale }}
                   exit={{ opacity: 0, scale: 0.7 }}
                   transition={{ duration: 0.3 }}
+                  transformTemplate={(t) => `translate(-50%, -50%) scale(${t.scale ?? 1})`}
                 >
                   <PlayerSeat
                     seat={seat}
@@ -358,7 +428,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
                     reactions={reactions}
                     revealedCards={revealedCards[seat.playerId]}
                     isWinner={lastWinner?.winners?.some(w => w.playerId === seat.playerId)}
-                    cardsOnTop={cardsOnTop}
+                    cardsBelow={cardsBelow}
                     playerNote={getNote(seat.playerId)}
                     onProfileClick={() => setProfilePlayer(seat)}
                   />
@@ -472,11 +542,15 @@ export function PokerTable({ tableId, initialBuyIn }) {
         )}
 
         {/* Panel de acción — escritorio: abajo-derecha; móvil: barra full-width abajo */}
-        <div className={isMobile
-          ? 'absolute bottom-0 inset-x-0 bg-black/85 border-t border-white/10 z-30 backdrop-blur-sm'
-          : 'absolute bottom-3 right-3 bg-black/75 rounded-lg border border-white/10 z-30 backdrop-blur-sm'}>
+        <div
+          className={isMobile
+            ? 'absolute bottom-0 inset-x-0 bg-black/85 border-t border-white/10 z-30 backdrop-blur-sm'
+            : 'absolute bottom-3 right-3 bg-black/75 rounded-lg border border-white/10 z-30 backdrop-blur-sm'}
+          style={isMobile ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' } : undefined}
+        >
           <ActionPanel
             isMobile={isMobile}
+            compact={isMobile && vw < 480}
             actionRequired={actionRequired}
             myPlayerId={player?.id}
             mySeat={mySeat}
