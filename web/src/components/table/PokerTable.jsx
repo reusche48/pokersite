@@ -16,6 +16,7 @@ import { DealerButton } from './DealerButton';
 import { AnimatedNumber } from '../common/AnimatedNumber';
 import { PlayerProfileModal } from './PlayerProfileModal';
 import { HandInfo } from './HandInfo';
+import { TournamentStandings } from './TournamentStandings';
 import { useTableState } from '../../hooks/useTableState';
 import { useSeatCoords } from '../../hooks/useSeatCoords';
 import { useSoundManager } from '../../hooks/useSoundManager';
@@ -312,6 +313,12 @@ export function PokerTable({ tableId, initialBuyIn }) {
             <span className="text-yellow-300">🏅 {tableState.tournament.remaining - tableState.tournament.paidPlaces} a premios</span>
           ) : (
             <span className="text-green-400 font-bold">🏅 ¡EN PREMIOS!</span>
+          )}
+          {tableState.tournament.tournamentId && (
+            <>
+              <span className="text-purple-700">·</span>
+              <TournamentStandings tournamentId={tableState.tournament.tournamentId} myId={player?.id} compact={isMobile} />
+            </>
           )}
         </div>
       )}

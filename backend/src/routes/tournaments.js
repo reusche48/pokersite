@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const {
   listTournaments, getTournament, createTournament,
-  register, unregister, fillBots, start, myTable,
+  register, unregister, fillBots, start, myTable, standings,
 } = require('../controllers/tournamentsController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
@@ -12,6 +12,7 @@ router.get('/:id', getTournament);
 // Autenticado
 router.use(authMiddleware);
 router.get('/:id/my-table', myTable);
+router.get('/:id/standings', standings);
 router.post('/:id/register', register);
 router.post('/:id/unregister', unregister);
 

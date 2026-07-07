@@ -2,7 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
-const { startTournament, DEFAULT_BLINDS, defaultPayout, getPlayerTable } = require('../engine/tournamentManager');
+const { startTournament, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings } = require('../engine/tournamentManager');
 
 const MAX_FIELD = 30; // hasta 5 mesas de 6
 
@@ -158,4 +158,11 @@ async function myTable(req, res) {
   res.json({ tableId });
 }
 
-module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable };
+// GET /tournaments/:id/standings  → clasificación (vivos + eliminados)
+function standings(req, res) {
+  const data = getStandings(req.params.id);
+  if (!data) return res.status(404).json({ error: 'Torneo no activo' });
+  res.json(data);
+}
+
+module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable, standings };

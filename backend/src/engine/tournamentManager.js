@@ -121,6 +121,8 @@ async function startTournament(tournamentId) {
     chipMode: t.chip_mode,
     totalEntrants: regs.length,
     name: t.name,
+    id: tournamentId,
+    nicks: Object.fromEntries(regs.map(r => [r.player_id, r.nickname])),
   };
   runtime.set(tournamentId, rt);
   updateTournamentInfo(rt);
@@ -156,6 +158,7 @@ function updateTournamentInfo(rt) {
   if (!rt) return;
   const lvl = rt.schedule[Math.min(rt.blindIdx, rt.schedule.length - 1)] || {};
   const info = {
+    tournamentId: rt.id || null,
     name: rt.name || null,
     remaining: rt.remaining.size,
     total: rt.totalEntrants,
@@ -361,4 +364,30 @@ function getPlayerTable(tournamentId, playerId) {
   return rt?.seatOf?.get(playerId) || null;
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable };
+// Clasificación tipo PokerStars: jugadores vivos (con fichas, ordenados de más
+// a menos) y eliminados (con su puesto). No expone nivel de bot.
+function getStandings(tournamentId) {
+  const rt = runtime.get(tournamentId);
+  if (!rt) return null;
+  const alive = [];
+  for (const tid of rt.tableIds) {
+    const tb = tm.getTable(tid);
+    if (!tb) continue;
+    for (const s of tb.seats) {
+      if (s.playerId && rt.remaining.has(s.playerId)) {
+        alive.push({ playerId: s.playerId, nickname: s.nickname || rt.nicks?.[s.playerId] || '—', stack: s.stack || 0 });
+      }
+    }
+  }
+  alive.sort((a, b) => b.stack - a.stack).forEach((p, i) => { p.rank = i + 1; });
+  const eliminated = Object.entries(rt.positions || {})
+    .map(([pid, pos]) => ({ playerId: pid, nickname: rt.nicks?.[pid] || '—', position: pos }))
+    .sort((a, b) => a.position - b.position);
+  return {
+    name: rt.name, total: rt.totalEntrants,
+    paidPlaces: Object.keys(rt.payout || {}).length,
+    alive, eliminated,
+  };
+}
+
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings };
