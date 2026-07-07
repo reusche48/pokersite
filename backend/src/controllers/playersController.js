@@ -75,16 +75,28 @@ async function getStats(req, res) {
   const jp = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
 
   let wins = 0, totalWon = 0, totalInvested = 0, bestWin = 0;
+  // Métricas pro: VPIP (puso dinero voluntario preflop), PFR (subió preflop),
+  // AF (factor de agresión: subidas / pagos)
+  let vpipHands = 0, pfrHands = 0, aggRaises = 0, aggCalls = 0;
   const byDay = new Map(); // 'YYYY-MM-DD' → { hands, net }
 
   for (const r of rows) {
     const winners = jp(r.winners_json);
     const actions = jp(r.actions_json);
     let won = 0, invested = 0;
-    for (const w of winners) if (w.playerId === pid) won += Number(w.amount) || 0;
+    let vpip = false, pfr = false, preflop = true;
     for (const a of actions) {
-      if (a.playerId === pid && a.action !== 'win' && Number(a.amount) > 0) invested += Number(a.amount);
+      if (typeof a.action === 'string' && a.action.startsWith('street_')) { preflop = false; continue; }
+      if (a.playerId !== pid) continue;
+      if (a.action !== 'win' && Number(a.amount) > 0) invested += Number(a.amount);
+      if (preflop && ['call', 'call_allin', 'raise', 'all_in'].includes(a.action)) vpip = true;
+      if (preflop && ['raise', 'all_in'].includes(a.action)) pfr = true;
+      if (['raise', 'all_in'].includes(a.action)) aggRaises++;
+      if (['call', 'call_allin'].includes(a.action)) aggCalls++;
     }
+    for (const w of winners) if (w.playerId === pid) won += Number(w.amount) || 0;
+    if (vpip) vpipHands++;
+    if (pfr) pfrHands++;
     if (won > 0) { wins++; totalWon += won; if (won > bestWin) bestWin = won; }
     totalInvested += invested;
 
@@ -107,6 +119,9 @@ async function getStats(req, res) {
     totalInvested: Math.round(totalInvested),
     net: Math.round(totalWon - totalInvested),
     bestWin: Math.round(bestWin),
+    vpip: rows.length ? Math.round((vpipHands / rows.length) * 100) : 0,
+    pfr: rows.length ? Math.round((pfrHands / rows.length) * 100) : 0,
+    af: aggCalls > 0 ? Math.round((aggRaises / aggCalls) * 10) / 10 : (aggRaises > 0 ? 99 : 0),
     series,
   });
 }

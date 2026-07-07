@@ -37,6 +37,9 @@ export function StatsPage() {
     { label: 'Winrate', value: `${stats.winRate}%` },
     { label: 'Ganancia neta', value: `${netPositive ? '+' : ''}${stats.net.toLocaleString()}`, color: netPositive ? 'text-green-400' : 'text-red-400' },
     { label: 'Mejor bote ganado', value: stats.bestWin.toLocaleString() },
+    { label: 'VPIP', value: `${stats.vpip ?? 0}%`, hint: '% de manos en que pusiste fichas voluntariamente preflop' },
+    { label: 'PFR', value: `${stats.pfr ?? 0}%`, hint: '% de manos en que subiste preflop' },
+    { label: 'Agresión (AF)', value: stats.af ?? 0, hint: 'subidas ÷ pagos — más alto = más agresivo' },
   ];
 
   return (
@@ -55,7 +58,7 @@ export function StatsPage() {
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
               {KPIS.map(k => (
-                <Card key={k.label}>
+                <Card key={k.label} title={k.hint || ''}>
                   <CardHeader className="pb-0">
                     <CardDescription className="text-[10px] uppercase tracking-wider">{k.label}</CardDescription>
                   </CardHeader>

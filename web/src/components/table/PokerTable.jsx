@@ -141,6 +141,11 @@ export function PokerTable({ tableId, initialBuyIn }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [cinema, setCinema] = useState(false); // modo cine durante el run-out de all-in
   const [chatOpen, setChatOpen] = useState(false); // cajón de chat en móvil
+  // Auto-fold (ausente): pasa o se retira solo cuando me toca. Persistido.
+  const [autoFold, setAutoFold] = useState(() => localStorage.getItem('autoFold') === '1');
+  function toggleAutoFold() {
+    setAutoFold(v => { localStorage.setItem('autoFold', v ? '0' : '1'); return !v; });
+  }
   const isMobile = useIsMobile();
   // Escala de los asientos: en móvil se adapta al ancho real de la pantalla.
   // Celular chico ≈ 0.8; tablet grande sube hasta ≈ 1.25 (cartas/avatares más grandes).
@@ -167,6 +172,15 @@ export function PokerTable({ tableId, initialBuyIn }) {
       play('victory_fanfare');
     }
   }, [lastWinner]);
+
+  // Auto-fold: cuando me toca y está activado, paso (o me retiro) solo
+  useEffect(() => {
+    if (!autoFold || !actionRequired || actionRequired.playerId !== player?.id) return;
+    const t = setTimeout(() => {
+      sendAction((actionRequired.toCall || 0) > 0 ? 'fold' : 'check');
+    }, 800);
+    return () => clearTimeout(t);
+  }, [autoFold, actionRequired]);
 
   // All-in run-out → heartbeat suspense sound + modo cine
   useEffect(() => {
@@ -307,7 +321,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
           )}
           <span className="text-white">👥 {tableState.tournament.remaining}/{tableState.tournament.total}</span>
           <span className="text-purple-700">·</span>
-          <span className="text-sky-300">⏫ Niv {tableState.tournament.level} ({tableState.tournament.smallBlind}/{tableState.tournament.bigBlind})</span>
+          <span className="text-sky-300">⏫ Niv {tableState.tournament.level} ({tableState.tournament.smallBlind}/{tableState.tournament.bigBlind}{tableState.tournament.ante ? ` a${tableState.tournament.ante}` : ''})</span>
           <span className="text-purple-700">·</span>
           {tableState.tournament.remaining > tableState.tournament.paidPlaces ? (
             <span className="text-yellow-300">🏅 {tableState.tournament.remaining - tableState.tournament.paidPlaces} a premios</span>
@@ -579,6 +593,8 @@ export function PokerTable({ tableId, initialBuyIn }) {
           <ActionPanel
             isMobile={isMobile}
             compact={isMobile && vw < 480}
+            autoFold={autoFold}
+            onToggleAutoFold={toggleAutoFold}
             actionRequired={actionRequired}
             myPlayerId={player?.id}
             mySeat={mySeat}

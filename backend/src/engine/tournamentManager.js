@@ -22,11 +22,11 @@ const DEFAULT_BLINDS = [
   { smallBlind: 10, bigBlind: 20, minutes: 3 },
   { smallBlind: 15, bigBlind: 30, minutes: 3 },
   { smallBlind: 25, bigBlind: 50, minutes: 3 },
-  { smallBlind: 50, bigBlind: 100, minutes: 3 },
-  { smallBlind: 100, bigBlind: 200, minutes: 3 },
-  { smallBlind: 200, bigBlind: 400, minutes: 3 },
-  { smallBlind: 400, bigBlind: 800, minutes: 3 },
-  { smallBlind: 800, bigBlind: 1600, minutes: 99 },
+  { smallBlind: 50, bigBlind: 100, minutes: 3, ante: 10 },
+  { smallBlind: 100, bigBlind: 200, minutes: 3, ante: 25 },
+  { smallBlind: 200, bigBlind: 400, minutes: 3, ante: 50 },
+  { smallBlind: 400, bigBlind: 800, minutes: 3, ante: 100 },
+  { smallBlind: 800, bigBlind: 1600, minutes: 99, ante: 200 },
 ];
 
 // Runtime por torneo: tournamentId → { tableIds, botClients(Map), seatOf(Map),
@@ -82,6 +82,7 @@ async function startTournament(tournamentId) {
     table.isTournament = true;
     table.tournamentId = tournamentId;
     table.tournamentOver = false;
+    table.ante = lvl0.ante || 0;
     table.onBust = (busted) => onBust(tournamentId, busted);
     table.onHandComplete = () => onHandComplete(tournamentId, id);
     tableIds.push(id);
@@ -222,6 +223,7 @@ async function resumeTournaments() {
         table.isTournament = true;
         table.tournamentId = t.id;
         table.tournamentOver = false;
+        table.ante = lvl.ante || 0;
         table.onBust = (busted) => onBust(t.id, busted);
         table.onHandComplete = () => onHandComplete(t.id, tSnap.id);
         for (const s of tSnap.seats) {
@@ -302,6 +304,7 @@ function updateTournamentInfo(rt) {
     level: rt.blindIdx + 1,
     smallBlind: lvl.smallBlind,
     bigBlind: lvl.bigBlind,
+    ante: lvl.ante || 0,
     paidPlaces: Object.keys(rt.payout || {}).length,
   };
   for (const tid of rt.tableIds) {
@@ -407,9 +410,10 @@ function scheduleBlindIncrease(tournamentId) {
       if (table && !table.tournamentOver) {
         table.smallBlind = lvl.smallBlind;
         table.bigBlind = lvl.bigBlind;
+        table.ante = lvl.ante || 0;
         emitToTable(tid, 'chat_received', {
           playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
-          text: `⏫ Ciegas: ${lvl.smallBlind}/${lvl.bigBlind}`,
+          text: `⏫ Ciegas: ${lvl.smallBlind}/${lvl.bigBlind}${lvl.ante ? ` (ante ${lvl.ante})` : ''}`,
         });
       }
     }
