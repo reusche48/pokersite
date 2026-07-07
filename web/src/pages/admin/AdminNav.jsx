@@ -2,6 +2,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const SECTIONS = [
   {
+    title: 'Resumen',
+    items: [
+      { path: '/admin', label: 'Dashboard', icon: '📊' },
+    ],
+  },
+  {
     title: 'Gestión',
     items: [
       { path: '/admin/bots', label: 'Bots', icon: '🤖' },

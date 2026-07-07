@@ -126,6 +126,45 @@ async function getStats(req, res) {
   });
 }
 
+// ── Logros e insignias (calculados de los datos, sin tablas nuevas) ──
+async function getAchievements(req, res) {
+  const pid = req.player.id;
+  const [rows] = await pool.query(
+    `SELECT winners_json, pot_total FROM hand_history
+     WHERE JSON_SEARCH(players_json, 'one', ?, NULL, '$[*].playerId') IS NOT NULL
+     ORDER BY ended_at DESC LIMIT 2000`,
+    [pid]
+  );
+  const jp = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
+  let wins = 0, bestWin = 0;
+  for (const r of rows) {
+    for (const w of jp(r.winners_json)) {
+      if (w.playerId === pid) { wins++; const a = Number(w.amount) || 0; if (a > bestWin) bestWin = a; break; }
+    }
+  }
+  const hands = rows.length;
+  const [[t]] = await pool.query(
+    `SELECT SUM(final_position = 1) campeonatos, SUM(final_position <= 3) podios,
+            SUM(prize_won > 0) premios, COUNT(*) torneos
+     FROM tournament_registrations WHERE player_id = ? AND final_position IS NOT NULL`,
+    [pid]
+  );
+  const A = (id, emoji, nombre, desc, logrado, progreso = null) => ({ id, emoji, nombre, desc, logrado: !!logrado, progreso });
+  res.json([
+    A('primera_mano', '🃏', 'Primera mano', 'Juega tu primera mano', hands >= 1, `${Math.min(hands, 1)}/1`),
+    A('cien_manos', '💯', 'Centenario', 'Juega 100 manos', hands >= 100, `${Math.min(hands, 100)}/100`),
+    A('mil_manos', '🎰', 'Veterano', 'Juega 1000 manos', hands >= 1000, `${Math.min(hands, 1000)}/1000`),
+    A('primera_victoria', '🥇', 'Primera sangre', 'Gana tu primera mano', wins >= 1, `${Math.min(wins, 1)}/1`),
+    A('diez_victorias', '🔥', 'En racha', 'Gana 10 manos', wins >= 10, `${Math.min(wins, 10)}/10`),
+    A('cincuenta_victorias', '⚡', 'Tiburón', 'Gana 50 manos', wins >= 50, `${Math.min(wins, 50)}/50`),
+    A('gran_bote', '💰', 'Gran bote', 'Gana un bote de 500+', bestWin >= 500, bestWin ? `mejor: ${Math.round(bestWin)}` : '0/500'),
+    A('primer_torneo', '🎫', 'Torneista', 'Termina un torneo', (t.torneos || 0) >= 1, `${Math.min(t.torneos || 0, 1)}/1`),
+    A('en_premios', '🏅', 'En premios', 'Cobra premio en un torneo', (t.premios || 0) >= 1, `${t.premios || 0} vez/veces`),
+    A('podio', '🥉', 'Podio', 'Queda top 3 en un torneo', (t.podios || 0) >= 1, `${t.podios || 0} podios`),
+    A('campeon', '🏆', 'Campeón', 'Gana un torneo', (t.campeonatos || 0) >= 1, `${t.campeonatos || 0} títulos`),
+  ]);
+}
+
 // ── Etiquetas de testers (qué nivel le adivinan a cada jugador/bot) ──
 async function saveLabel(req, res) {
   const { targetId, estimatedLevel, tag, note } = req.body;
@@ -153,4 +192,4 @@ async function getLabels(req, res) {
   res.json(map);
 }
 
-module.exports = { getMe, getHistory, refill, updateAvatar, saveLabel, getLabels, getStats };
+module.exports = { getMe, getHistory, refill, updateAvatar, saveLabel, getLabels, getStats, getAchievements };

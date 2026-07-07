@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { notify, canAskNotifications, askNotifications } from '../lib/notify';
 import { Avatar } from '../components/table/Avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -125,6 +126,7 @@ export function LobbyPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now()); // reloj para cuentas regresivas
   const [joinCode, setJoinCode] = useState(''); // código de mesa privada
+  const [showNotifBtn, setShowNotifBtn] = useState(() => canAskNotifications());
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -144,6 +146,7 @@ export function LobbyPage() {
     const onStart = ({ tableId }) => {
       if (!tableId) return;
       toast.info('🏆 ¡Tu torneo está comenzando! Entrando a la mesa...');
+      notify('🏆 ¡Tu torneo comienza!', 'Entrando a tu mesa...');
       navigate(`/table/${tableId}?buyIn=1500`);
     };
     s?.on?.('torneo_iniciado', onStart);
@@ -348,6 +351,19 @@ export function LobbyPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Aviso de notificaciones (una sola vez) */}
+        {showNotifBtn && (
+          <div className="mb-6 flex items-center justify-between bg-sky-950/50 border border-sky-800/50 rounded-xl px-4 py-3">
+            <span className="text-sm text-sky-200">🔔 Activa los avisos para saber cuando es tu turno o empieza tu torneo (aunque estés en otra pestaña)</span>
+            <button
+              onClick={async () => { await askNotifications(); setShowNotifBtn(false); }}
+              className="shrink-0 ml-3 bg-sky-700 hover:bg-sky-600 text-white text-sm font-bold px-4 py-1.5 rounded-lg"
+            >
+              Activar
+            </button>
           </div>
         )}
 

@@ -22,6 +22,7 @@ import { useSeatCoords } from '../../hooks/useSeatCoords';
 import { useSoundManager } from '../../hooks/useSoundManager';
 import { usePlayerNotes } from '../../hooks/usePlayerNotes';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { notify } from '../../lib/notify';
 import { useAuth } from '../../context/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -172,6 +173,13 @@ export function PokerTable({ tableId, initialBuyIn }) {
       play('victory_fanfare');
     }
   }, [lastWinner]);
+
+  // Notificación de navegador cuando me toca y la pestaña está en segundo plano
+  useEffect(() => {
+    if (actionRequired?.playerId === player?.id) {
+      notify('♠ ¡Es tu turno!', tableState?.name || 'PokerSite');
+    }
+  }, [actionRequired?.playerId]);
 
   // Auto-fold: cuando me toca y está activado, paso (o me retiro) solo
   useEffect(() => {

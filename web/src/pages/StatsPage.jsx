@@ -11,12 +11,16 @@ const handsConfig = { hands: { label: 'Manos', color: '#eab308' } };
 export function StatsPage() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [achievements, setAchievements] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     api.get('/players/me/stats')
       .then(({ data }) => setStats(data))
       .catch(() => setError('No se pudieron cargar tus estadísticas'));
+    api.get('/players/me/achievements')
+      .then(({ data }) => setAchievements(data))
+      .catch(() => {});
   }, []);
 
   if (error) {
@@ -68,6 +72,32 @@ export function StatsPage() {
                 </Card>
               ))}
             </div>
+
+            {/* Logros e insignias */}
+            {achievements.length > 0 && (
+              <div className="mb-8">
+                <h2 className="font-bold mb-3">
+                  🎖️ Logros ({achievements.filter(a => a.logrado).length}/{achievements.length})
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {achievements.map(a => (
+                    <div
+                      key={a.id}
+                      title={a.desc}
+                      className={`rounded-xl border px-3 py-2.5 ${
+                        a.logrado
+                          ? 'bg-yellow-900/30 border-yellow-700/60'
+                          : 'bg-gray-900/60 border-gray-800 opacity-50 grayscale'
+                      }`}
+                    >
+                      <div className="text-2xl leading-none mb-1">{a.emoji}</div>
+                      <div className="text-xs font-bold truncate">{a.nombre}</div>
+                      <div className="text-[10px] text-gray-400 truncate">{a.logrado ? '✓ Logrado' : a.progreso || a.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Curva de ganancia acumulada */}
             <Card className="mb-5">
