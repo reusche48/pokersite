@@ -20,6 +20,7 @@ import { useTableState } from '../../hooks/useTableState';
 import { useSeatCoords } from '../../hooks/useSeatCoords';
 import { useSoundManager } from '../../hooks/useSoundManager';
 import { usePlayerNotes } from '../../hooks/usePlayerNotes';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useAuth } from '../../context/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,8 @@ export function PokerTable({ tableId, initialBuyIn }) {
   const [profilePlayer, setProfilePlayer] = useState(null); // seat being profiled
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [cinema, setCinema] = useState(false); // modo cine durante el run-out de all-in
+  const [chatOpen, setChatOpen] = useState(false); // cajón de chat en móvil
+  const isMobile = useIsMobile();
 
   // Leaving mid-hand costs you the hand — confirm first
   function requestLeave() {
@@ -199,21 +202,23 @@ export function PokerTable({ tableId, initialBuyIn }) {
     }}>
 
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-black/40 text-gray-300 text-xs font-semibold z-10">
-        <div className="flex gap-4">
-          <button onClick={requestLeave} className="hover:text-white transition">STAND UP</button>
+      <div className="flex items-center justify-between px-3 py-2 bg-black/40 text-gray-300 text-xs font-semibold z-10">
+        <div className="flex gap-3 items-center">
+          <button onClick={requestLeave} className="hover:text-white transition">{isMobile ? '← Salir' : 'STAND UP'}</button>
           <span className="text-gray-600">|</span>
           <span className="text-gray-400">Mano #{tableState.handNumber || 0}</span>
         </div>
-        <div className="text-gray-400">{tableState.name || 'Mesa'} — {tableState.gameType?.replace('_',' ').toUpperCase() || 'HOLDEM'}</div>
-        <div className="flex gap-4">
-          <button onClick={toggleMute} className="hover:text-white transition">{muted ? '🔇 SILENCIO' : '🔊 SONIDO'}</button>
-          <button onClick={requestLeave} className="hover:text-white transition">LOBBY</button>
+        {!isMobile && (
+          <div className="text-gray-400">{tableState.name || 'Mesa'} — {tableState.gameType?.replace('_',' ').toUpperCase() || 'HOLDEM'}</div>
+        )}
+        <div className="flex gap-3 items-center">
+          <button onClick={toggleMute} className="hover:text-white transition">{muted ? '🔇' : '🔊'}{!isMobile && (muted ? ' SILENCIO' : ' SONIDO')}</button>
+          {!isMobile && <button onClick={requestLeave} className="hover:text-white transition">LOBBY</button>}
         </div>
       </div>
 
       {/* Main area — table fills the screen, Full Tilt style; bottom strip reserved for floating panels */}
-      <div className="flex-1 relative overflow-hidden min-h-0 px-3 pb-[88px] pt-1">
+      <div className={`flex-1 relative overflow-hidden min-h-0 pt-1 ${isMobile ? 'px-1 pb-[76px]' : 'px-3 pb-[88px]'}`}>
         <div ref={containerRefCb} className="relative w-full h-full">
 
           {/* Wood rail — stadium shape (straight sides, round ends) like a real table */}
@@ -302,7 +307,7 @@ export function PokerTable({ tableId, initialBuyIn }) {
                   className="absolute z-10"
                   style={{ ...visualPos, transform: 'translate(-50%, -50%)' }}
                   initial={{ opacity: 0, scale: 0.7 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  animate={{ opacity: 1, scale: isMobile ? 0.78 : 1 }}
                   exit={{ opacity: 0, scale: 0.7 }}
                   transition={{ duration: 0.3 }}
                 >
@@ -398,26 +403,41 @@ export function PokerTable({ tableId, initialBuyIn }) {
           />
         )}
 
-        {/* Floating chat — bottom left over the background, Full Tilt style */}
-        <div className="absolute bottom-3 left-3 w-[300px] h-[140px] bg-black/75 rounded-lg border border-white/10 overflow-hidden z-30 backdrop-blur-sm">
-          <ChatBox
-            chat={chat}
-            onSend={(text) => sendChat(text, 'chat')}
-            onEmote={(text) => sendChat(text, 'emote')}
-            onReaction={sendReaction}
-          />
-        </div>
+        {/* Chat — escritorio: flotante fijo; móvil: cajón colapsable con botón */}
+        {isMobile ? (
+          <>
+            <button
+              onClick={() => setChatOpen(o => !o)}
+              className="absolute bottom-2 left-2 z-40 w-11 h-11 rounded-full bg-black/70 border border-white/15 backdrop-blur-sm flex items-center justify-center text-lg"
+            >
+              💬
+            </button>
+            {chatOpen && (
+              <div className="absolute inset-x-2 bottom-16 h-[45%] bg-black/90 rounded-lg border border-white/15 overflow-hidden z-40 backdrop-blur-sm">
+                <button onClick={() => setChatOpen(false)} className="absolute top-1 right-2 z-10 text-gray-400 text-lg">✕</button>
+                <ChatBox chat={chat} onSend={(t) => sendChat(t, 'chat')} onEmote={(t) => sendChat(t, 'emote')} onReaction={sendReaction} />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="absolute bottom-3 left-3 w-[300px] h-[140px] bg-black/75 rounded-lg border border-white/10 overflow-hidden z-30 backdrop-blur-sm">
+            <ChatBox chat={chat} onSend={(t) => sendChat(t, 'chat')} onEmote={(t) => sendChat(t, 'emote')} onReaction={sendReaction} />
+          </div>
+        )}
 
         {/* Live hand info — only while I'm still in the hand */}
         {['active', 'all_in'].includes(mySeat?.status) && (
-          <div className="absolute bottom-[110px] right-3 z-30">
+          <div className={isMobile ? 'absolute bottom-[80px] left-1/2 -translate-x-1/2 z-30' : 'absolute bottom-[110px] right-3 z-30'}>
             <HandInfo myCards={myCards} community={tableState.community} phase={tableState.phase} />
           </div>
         )}
 
-        {/* Floating action panel — bottom right */}
-        <div className="absolute bottom-3 right-3 bg-black/75 rounded-lg border border-white/10 z-30 backdrop-blur-sm">
+        {/* Panel de acción — escritorio: abajo-derecha; móvil: barra full-width abajo */}
+        <div className={isMobile
+          ? 'absolute bottom-0 inset-x-0 bg-black/85 border-t border-white/10 z-30 backdrop-blur-sm'
+          : 'absolute bottom-3 right-3 bg-black/75 rounded-lg border border-white/10 z-30 backdrop-blur-sm'}>
           <ActionPanel
+            isMobile={isMobile}
             actionRequired={actionRequired}
             myPlayerId={player?.id}
             mySeat={mySeat}

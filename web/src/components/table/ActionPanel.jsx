@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChipStack } from './ChipStack';
 
-export function ActionPanel({ actionRequired, myPlayerId, mySeat, currentBet, lastRaiseSize, pot = 0, bigBlind = 10, onAction, onRevealCards, canReveal }) {
+export function ActionPanel({ isMobile = false, actionRequired, myPlayerId, mySeat, currentBet, lastRaiseSize, pot = 0, bigBlind = 10, onAction, onRevealCards, canReveal }) {
   const isMyTurn = actionRequired && actionRequired.playerId === myPlayerId;
   const stack = mySeat?.stack || 0;
   const streetBet = mySeat?.currentStreetBet || 0;
@@ -39,6 +39,52 @@ export function ActionPanel({ actionRequired, myPlayerId, mySeat, currentBet, la
 
   const maxRaise = stack + streetBet;
   const potRaise = Math.min((currentBet || 0) + (pot || 0), maxRaise);
+
+  // ── Móvil: barra full-width con botones táctiles grandes ──
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-1.5 px-2 py-2">
+        {/* Controles de subida */}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setRaiseAmount(minRaise)} className="raise-quick-btn flex-1 py-1.5">MIN</button>
+          <button onClick={() => setRaiseAmount(Math.min(potRaise, maxRaise))} className="raise-quick-btn flex-1 py-1.5">BOTE</button>
+          <button onClick={() => setRaiseAmount(maxRaise)} className="raise-quick-btn flex-1 py-1.5">MAX</button>
+          <input
+            type="range" min={minRaise} max={maxRaise} step={bigBlind} value={raiseAmount}
+            onChange={e => setRaiseAmount(Number(e.target.value))}
+            className="flex-[2] h-2 accent-yellow-500"
+          />
+          <span className="w-14 text-center text-xs font-mono text-white bg-gray-900 border border-gray-600 rounded px-1 py-1">{raiseAmount}</span>
+        </div>
+        {/* Botones principales */}
+        <div className="flex items-stretch gap-1.5 text-sm font-bold text-white">
+          <button onClick={() => onAction('fold')} className="flex-1 py-3 rounded"
+            style={{ background: 'linear-gradient(180deg,#5c5c5c,#3a3a3a)', border: '1px solid #666' }}>
+            RETIRARSE
+          </button>
+          {canCheck ? (
+            <button onClick={() => onAction('check')} className="flex-1 py-3 rounded"
+              style={{ background: 'linear-gradient(180deg,#2e7d32,#1b5e20)', border: '1px solid #43a047' }}>
+              PASAR
+            </button>
+          ) : (
+            <button onClick={() => onAction('call', owed)} className="flex-1 py-3 rounded leading-tight"
+              style={{ background: 'linear-gradient(180deg,#2e7d32,#1b5e20)', border: '1px solid #43a047' }}>
+              IGUALAR<br /><span className="text-xs font-normal">{owed}</span>
+            </button>
+          )}
+          <button
+            onClick={() => raiseAmount >= maxRaise ? onAction('all_in') : onAction('raise', raiseAmount)}
+            disabled={stack <= owed}
+            className="flex-1 py-3 rounded leading-tight disabled:opacity-40"
+            style={{ background: 'linear-gradient(180deg,#e65100,#bf360c)', border: '1px solid #f57c00' }}>
+            {raiseAmount >= maxRaise ? 'TODO' : 'SUBIR'}<br />
+            <span className="text-xs font-normal">{raiseAmount >= maxRaise ? stack : raiseAmount}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
