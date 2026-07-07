@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { Avatar } from '../components/table/Avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,6 +102,17 @@ function TableCard({ table, onJoin }) {
   );
 }
 
+function MenuItem({ children, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3 text-sm font-semibold border-b border-gray-800 last:border-0 active:bg-gray-800 ${danger ? 'text-red-400' : 'text-gray-200'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function LobbyPage() {
   const { player, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
@@ -110,6 +122,8 @@ export function LobbyPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [buyInModal, setBuyInModal] = useState(null);
   const [buyIn, setBuyIn] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!player) { setShowAuth(true); return; }
@@ -169,25 +183,57 @@ export function LobbyPage() {
     <div className="min-h-screen bg-gray-950 text-white lobby-bg">
       {showAuth && <NicknameModal onClose={() => setShowAuth(false)} />}
 
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-        <h1 className="text-2xl font-bold text-green-400">♠ PokerSite</h1>
-        {player && (
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-800 relative">
+        <h1 className="text-xl sm:text-2xl font-bold text-green-400">♠ PokerSite</h1>
+
+        {player && (isMobile ? (
+          /* ── Móvil: fichas + avatar + botón de menú ── */
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-green-400 font-mono">🎮 ${player.play_chips?.toLocaleString()}</span>
+            <button onClick={() => navigate('/perfil')} className="active:brightness-125">
+              <Avatar nickname={player.nickname} avatarConfig={player.avatar_config} size={34} />
+            </button>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-xl"
+              aria-label="Menú"
+            >
+              {menuOpen ? '✕' : '☰'}
+            </button>
+
+            {/* Menú desplegable con opciones grandes */}
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-3 top-full mt-1 w-60 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-800 text-sm text-gray-400">
+                    Hola, <span className="text-white font-bold">{player.nickname}</span>
+                  </div>
+                  {isAdmin && (
+                    <MenuItem onClick={() => { setMenuOpen(false); navigate('/admin/bots'); }}>⚙️ Panel Admin</MenuItem>
+                  )}
+                  <MenuItem onClick={() => { setMenuOpen(false); navigate('/perfil'); }}>🎭 Mi perfil</MenuItem>
+                  <MenuItem onClick={() => { setMenuOpen(false); navigate('/estadisticas'); }}>📈 Estadísticas</MenuItem>
+                  <MenuItem onClick={() => { setMenuOpen(false); navigate('/historial'); }}>📜 Mis manos</MenuItem>
+                  <MenuItem onClick={() => { setMenuOpen(false); logout(); }} danger>🚪 Salir</MenuItem>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          /* ── Escritorio: barra horizontal ── */
           <div className="flex items-center gap-4">
             {isAdmin && <button onClick={() => navigate('/admin/bots')} className="text-xs text-yellow-400 hover:text-yellow-300 font-bold">⚙️ Admin</button>}
             <button onClick={() => navigate('/estadisticas')} className="text-xs text-green-400 hover:text-green-300 font-bold">📈 Estadísticas</button>
             <button onClick={() => navigate('/historial')} className="text-xs text-sky-400 hover:text-sky-300 font-bold">📜 Mis manos</button>
-            <button
-              onClick={() => navigate('/perfil')}
-              className="flex items-center gap-2 hover:brightness-125 transition"
-              title="Editar mi perfil"
-            >
+            <button onClick={() => navigate('/perfil')} className="flex items-center gap-2 hover:brightness-125 transition" title="Editar mi perfil">
               <Avatar nickname={player.nickname} avatarConfig={player.avatar_config} size={30} />
               <span className="text-sm text-gray-300">{player.nickname}</span>
             </button>
             <span className="text-sm text-green-400 font-mono">🎮 ${player.play_chips?.toLocaleString()}</span>
             <button onClick={logout} className="text-xs text-gray-500 hover:text-gray-300">Salir</button>
           </div>
-        )}
+        ))}
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
