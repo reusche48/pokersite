@@ -30,21 +30,74 @@ async function getTournament(req, res) {
   res.json({ ...rows[0], registrations: regs });
 }
 
-// POST /tournaments  (admin) → crear Sit&Go
+// ── Programación de inicio por fecha/hora ──
+const startSchedules = new Map(); // tournamentId → timer
+
+function scheduleStart(id, whenMs) {
+  const prev = startSchedules.get(id);
+  if (prev) clearTimeout(prev);
+  const delay = Math.max(0, whenMs - Date.now());
+  if (delay > 2147483647) return; // demasiado lejos; se reprograma al reiniciar
+  const timer = setTimeout(() => {
+    startSchedules.delete(id);
+    fireScheduledStart(id).catch(e => console.error('[torneo programado]', e.message));
+  }, delay);
+  startSchedules.set(id, timer);
+}
+
+// A la hora programada: rellena los cupos libres con bots variados y arranca.
+async function fireScheduledStart(id) {
+  const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [id]);
+  if (!t || t.status !== 'registering') return; // ya arrancó/cancelado
+  const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [id]);
+  const room = t.max_players - cnt.n;
+  if (room > 0) {
+    const [bots] = await pool.query(
+      `SELECT bot_id FROM bots
+       WHERE bot_id NOT IN (SELECT player_id FROM tournament_registrations WHERE tournament_id = ?)
+       ORDER BY RAND() LIMIT ?`,
+      [id, room]
+    );
+    for (const b of bots) { try { await registerPlayer(id, b.bot_id); } catch {} }
+  }
+  await startTournament(id).catch(e => console.error('[torneo programado start]', e.message));
+}
+
+// Al arrancar el servidor: reprograma los torneos con hora futura.
+async function initScheduler() {
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, starts_at FROM tournaments WHERE status = 'registering' AND starts_at IS NOT NULL"
+    );
+    for (const r of rows) {
+      const whenMs = new Date(r.starts_at).getTime();
+      scheduleStart(r.id, Math.max(whenMs, Date.now() + 3000)); // si ya pasó, en 3s
+    }
+    if (rows.length) console.log(`[Torneos] ${rows.length} inicio(s) programado(s) reprogramados`);
+  } catch (e) { console.error('[Torneos] initScheduler:', e.message); }
+}
+
+// POST /tournaments  (admin) → crear Sit&Go (opcional startsAt para inicio programado)
 async function createTournament(req, res) {
-  const { name, maxPlayers = 6, buyIn = 100, blindSchedule = null } = req.body;
+  const { name, maxPlayers = 6, buyIn = 100, blindSchedule = null, startsAt = null } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Nombre requerido' });
   const max = Math.min(Math.max(Number(maxPlayers) || 6, 2), MAX_FIELD);
+  let startsAtDate = null;
+  if (startsAt) {
+    startsAtDate = new Date(startsAt);
+    if (isNaN(startsAtDate.getTime())) return res.status(400).json({ error: 'Fecha/hora inválida' });
+  }
   const id = uuidv4();
   const scheduleJson = JSON.stringify(Array.isArray(blindSchedule) && blindSchedule.length ? blindSchedule : DEFAULT_BLINDS);
   const payoutJson = JSON.stringify(defaultPayout(max));
   await pool.query(
     `INSERT INTO tournaments
-       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, created_by)
-     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, 0, ?, ?, 'registering', ?)`,
-    [id, name.trim(), max, Number(buyIn) || 100, payoutJson, scheduleJson, req.player.id]
+       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, starts_at, created_by)
+     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, 0, ?, ?, 'registering', ?, ?)`,
+    [id, name.trim(), max, Number(buyIn) || 100, payoutJson, scheduleJson, startsAtDate, req.player.id]
   );
-  res.status(201).json({ id, name: name.trim(), maxPlayers: max, buyIn: Number(buyIn) || 100 });
+  if (startsAtDate) scheduleStart(id, startsAtDate.getTime());
+  res.status(201).json({ id, name: name.trim(), maxPlayers: max, buyIn: Number(buyIn) || 100, startsAt: startsAtDate });
 }
 
 // Inscribe a un jugador (cobra el buy-in a play_chips y suma al bote de premios)
@@ -165,4 +218,4 @@ function standings(req, res) {
   res.json(data);
 }
 
-module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable, standings };
+module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable, standings, initScheduler };

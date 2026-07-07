@@ -56,6 +56,8 @@ process.on('unhandledRejection', (err) => {
 setupDb()
   .then(() => {
     server.listen(PORT, () => console.log(`[Server] Listening on port ${PORT}`));
+    // Reprogramar torneos con inicio por fecha/hora tras un reinicio
+    try { require('./src/controllers/tournamentsController').initScheduler(); } catch (e) { console.error('[Torneos] scheduler:', e.message); }
   })
   .catch(err => {
     console.error('[DB] Setup failed:', err);

@@ -32,6 +32,7 @@ export function AdminTournamentsPage() {
   const [list, setList] = useState([]);
   const [botLevel, setBotLevel] = useState(7);
   const [botCount, setBotCount] = useState(6);
+  const [startAt, setStartAt] = useState(''); // inicio programado (opcional)
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(torneoSchema),
@@ -49,8 +50,10 @@ export function AdminTournamentsPage() {
       await api.post('/tournaments', {
         name: values.name, maxPlayers: values.maxPlayers, buyIn: values.buyIn,
         blindSchedule: values.turbo ? TURBO : null,
+        startsAt: startAt || null,
       });
-      toast.success('Torneo creado');
+      toast.success(startAt ? 'Torneo programado' : 'Torneo creado');
+      setStartAt('');
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear torneo'); }
   }
@@ -97,6 +100,16 @@ export function AdminTournamentsPage() {
             <input type="checkbox" checked={turbo} onChange={e => setValue('turbo', e.target.checked)} />
             Modo turbo (ciegas suben cada 30s — ideal para pruebas)
           </label>
+          <div>
+            <Label htmlFor="t-start" className="text-[10px] text-gray-500">
+              Inicio programado (opcional) — a esta hora se rellena con bots y arranca solo
+            </Label>
+            <Input id="t-start" type="datetime-local" value={startAt}
+              onChange={e => setStartAt(e.target.value)} className="w-full" />
+            <p className="text-[10px] text-gray-500 mt-1">
+              Déjalo vacío para arrancar manualmente o al llenarse.
+            </p>
+          </div>
           <Button type="submit" disabled={isSubmitting} className="font-bold">
             {isSubmitting ? 'Creando...' : 'Crear torneo'}
           </Button>
@@ -131,6 +144,9 @@ export function AdminTournamentsPage() {
                     <span className={`ml-2 text-[10px] px-2 py-0.5 rounded-full ${t.status === 'running' ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>{t.status}</span>
                   </div>
                   <div className="text-xs text-gray-400">{t.registered}/{t.max_players} inscritos · buy-in {t.buy_in} · bote {t.prize_pool}</div>
+                  {t.starts_at && t.status === 'registering' && (
+                    <div className="text-xs text-yellow-300 mt-0.5">🕐 Empieza: {new Date(t.starts_at).toLocaleString()}</div>
+                  )}
                 </div>
                 {t.status === 'registering' && (
                   <div className="flex gap-2">
