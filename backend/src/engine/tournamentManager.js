@@ -370,22 +370,27 @@ function getStandings(tournamentId) {
   const rt = runtime.get(tournamentId);
   if (!rt) return null;
   const alive = [];
-  for (const tid of rt.tableIds) {
+  rt.tableIds.forEach((tid, ti) => {
     const tb = tm.getTable(tid);
-    if (!tb) continue;
+    if (!tb) return;
     for (const s of tb.seats) {
       if (s.playerId && rt.remaining.has(s.playerId)) {
-        alive.push({ playerId: s.playerId, nickname: s.nickname || rt.nicks?.[s.playerId] || '—', stack: s.stack || 0 });
+        alive.push({ playerId: s.playerId, nickname: s.nickname || rt.nicks?.[s.playerId] || '—', stack: s.stack || 0, table: ti + 1 });
       }
     }
-  }
+  });
   alive.sort((a, b) => b.stack - a.stack).forEach((p, i) => { p.rank = i + 1; });
   const eliminated = Object.entries(rt.positions || {})
     .map(([pid, pos]) => ({ playerId: pid, nickname: rt.nicks?.[pid] || '—', position: pos }))
     .sort((a, b) => a.position - b.position);
+  // Premio en fichas de cada puesto pagado (% del prize pool)
+  const prizePool = rt.prizePool || 0;
+  const payouts = {};
+  Object.entries(rt.payout || {}).forEach(([pos, pct]) => { payouts[pos] = Math.round(prizePool * pct); });
   return {
     name: rt.name, total: rt.totalEntrants,
     paidPlaces: Object.keys(rt.payout || {}).length,
+    prizePool, payouts, tables: rt.tableIds.length,
     alive, eliminated,
   };
 }

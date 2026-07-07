@@ -53,6 +53,7 @@ export function TournamentStandings({ tournamentId, myId, compact = false }) {
                 {data.alive.map((p) => {
                   const inMoney = p.rank <= data.paidPlaces;
                   const isMe = p.playerId === myId;
+                  const prize = data.payouts?.[p.rank];
                   return (
                     <div
                       key={p.playerId}
@@ -64,8 +65,13 @@ export function TournamentStandings({ tournamentId, myId, compact = false }) {
                         <span className={`w-6 text-right font-mono text-xs ${inMoney ? 'text-yellow-300' : 'text-gray-400'}`}>
                           {inMoney ? '🏅' : ''}{p.rank}
                         </span>
-                        <span className={`truncate ${isMe ? 'text-yellow-300 font-bold' : 'text-white'}`}>
-                          {p.nickname}{isMe ? ' (tú)' : ''}
+                        <span className="flex flex-col min-w-0">
+                          <span className={`truncate ${isMe ? 'text-yellow-300 font-bold' : 'text-white'}`}>
+                            {p.nickname}{isMe ? ' (tú)' : ''}
+                          </span>
+                          <span className="text-[10px] text-gray-500 leading-none">
+                            Mesa {p.table}{inMoney && prize ? ` · premio ${prize.toLocaleString()}` : ''}
+                          </span>
                         </span>
                       </span>
                       <span className="font-mono text-green-400 font-bold">{p.stack.toLocaleString()}</span>
