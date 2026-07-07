@@ -183,7 +183,7 @@ export function LobbyPage() {
     <div className="min-h-screen bg-gray-950 text-white lobby-bg">
       {showAuth && <NicknameModal onClose={() => setShowAuth(false)} />}
 
-      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-800 relative">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-800 relative" style={{ zIndex: 40 }}>
         <h1 className="text-xl sm:text-2xl font-bold text-green-400">♠ PokerSite</h1>
 
         {player && (isMobile ? (
