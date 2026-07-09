@@ -188,10 +188,54 @@ De cimientos → flujo de torneo → experiencia → modalidades → social → 
 - **Dashboard admin** en vivo (economía de fichas, mesas, torneos, logs) + moderación de chat.
 - **Anti-abuso ligero** (multicuenta/colusión básica) — útil aun en play money.
 
-### Fase 5 — Escala y avanzado (solo si crece mucho)
+### Fase 5 — MODO CLUBES (estilo PPPoker) — visión elegida por el dueño
+Inspirado en el modelo de PPPoker (clubes → uniones), analizado con capturas reales de su
+flujo "Crear mesa" (2026-07). El póker entre amigos funciona como clubes, no como casino
+abierto. Las Fases 0–4 ya están implementadas; esta es la siguiente gran etapa.
+
+**5A — Clubes (el corazón):**
+- Tabla `clubs` (id corto tipo PPPoker, nombre, escudo/tema, owner_id) + `club_members`
+  (roles: dueño / gerente / miembro; solicitudes de ingreso con aprobación).
+- Unirse por **ID/código del club** (evoluciona la mesa privada actual, que ya usa código).
+- El **dueño del club crea sus propias partidas**: Ring (cash), SNG y MTT — reusa TODO el
+  motor existente (tablesController + tournamentManager) añadiendo `club_id` a mesas y
+  torneos, y visibilidad: las partidas de club solo las ven sus miembros.
+- Lobby del club: pestañas (todo/activas/asientos libres), lista de partidas, torneo
+  destacado con hora programada (ya existe starts_at).
+
+**5B — Economía del club (comisión/rake):**
+- **Caja del club**: saldo propio (tabla `club_treasury` + transacciones).
+- **Cash**: el dueño configura **rake % + tope en BB** por mesa (ej. 5% cap 3BB);
+  se descuenta de cada bote ganado → va a la caja del club (gancho en runShowdown).
+- **Torneos**: comisión en la inscripción, formato "buy-in + fee" (ej. 100+10):
+  100 al pozo de premios, 10 a la caja del club (gancho en registerPlayer).
+- El dueño puede **repartir fichas de la caja** a miembros (recargas internas del club).
+
+**5C — Parámetros de mesa pro (vistos en PPPoker, priorizados):**
+- **Tiempo de acción configurable** por mesa (10/20/30s) — el motor ya parametriza timeout.
+- **Duración de mesa + extensión/cierre automático** (evita mesas fantasma).
+- **Modos**: Ante Up (antes en cash), **Bomb Pot**, 7-2 (bono por ganar con la peor mano),
+  Straddle UTG automático.
+- **Plantillas de mesa** (guardar configuración favorita del anfitrión).
+- Controles de entrada: mesa exclusiva / autorizado para entrar (aprobación individual),
+  VPIP mínimo (ya calculamos VPIP), prohibir chat.
+- "Imparcialidad" ligera: restricción de IP (no 2 jugadores misma IP en la mesa) — versión
+  play-money del anti-colusión de PPPoker.
+
+**5D — Uniones (cuando haya varios clubes):**
+- Tabla `unions` + `union_clubs`: clubes aliados comparten lobby de partidas entre sí
+  (más jugadores para torneos grandes). Reparto de comisión unión/club configurable.
+
+**5E — Reportes del anfitrión:**
+- Mini-dashboard POR CLUB (no solo el admin global que ya existe): actividad, manos,
+  rake recaudado, ranking de miembros — reusa las queries del dashboard admin filtrando
+  por club_id.
+
+### Fase 6 — Escala y avanzado (solo si crece mucho)
 - **Fast Fold (Zoom)** con pool dinámico; **Multi-tabling** en cliente (grid/tiles/hotkeys).
 - **Redis + colas**, separar el servidor de juego si suben usuarios.
 - **Run It Twice / Rabbit Hunt**, satélites, fases Day1/Day2.
+- Más variantes: PLO (Omaha), AOF, Double Board, OFC.
 
 > Si algún día se pasa a **dinero real**, se inserta ANTES de todo una fase de cumplimiento
 > (licencia Perú, KYC/AML, RNG certificado, auditoría financiera, retiros, anti-fraude fuerte).
