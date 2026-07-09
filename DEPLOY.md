@@ -38,6 +38,11 @@ ADMIN_EMAIL=tu-correo@ejemplo.com
 ADMIN_PASSWORD=<una-contraseña-fuerte>
 ```
 
+- `ASSETLINKS_JSON` (opcional): solo si empaquetas la app como **APK** (ver
+  `GET_THE_APP.md`). Pega aquí el contenido del `assetlinks.json` que da PWABuilder para
+  que el APK abra sin barra del navegador. El backend lo sirve en
+  `/.well-known/assetlinks.json`.
+
 - **JWT_SECRET**: genera uno nuevo (NO reutilices el local). Ej.:
   `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 - **NO** pongas `PORT` a mano — Railway lo asigna.

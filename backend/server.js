@@ -28,6 +28,20 @@ app.use('/api/hands', require('./src/routes/hands'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/tournaments', require('./src/routes/tournaments'));
 
+// ── Digital Asset Links (para el APK/TWA sin barra del navegador) ──
+// El contenido (con la huella SHA-256 de la firma del APK) se configura en la
+// variable de entorno ASSETLINKS_JSON. Debe ir ANTES del fallback SPA.
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const raw = process.env.ASSETLINKS_JSON;
+  if (!raw) return res.status(404).json({ error: 'assetlinks no configurado' });
+  try {
+    res.type('application/json').send(JSON.stringify(JSON.parse(raw)));
+  } catch {
+    // Si no es JSON válido, lo mandamos tal cual (por si pegan el archivo crudo)
+    res.type('application/json').send(raw);
+  }
+});
+
 // ── Servir la web compilada (producción) ───────────────────────────
 // En desarrollo, Vite sirve el frontend y hace proxy de /api hacia aquí,
 // así que este bloque solo actúa cuando existe `web/dist` (tras compilar).

@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: 'PokerSite',
         short_name: 'PokerSite',
-        description: 'Jukebox de póker multijugador: Texas Hold\'em con bots y torneos.',
+        description: 'Póker Texas Hold\'em multijugador: mesas, torneos y bots. Juega con amigos.',
         lang: 'es',
         theme_color: '#0a0f16',
         background_color: '#0a0f16',
