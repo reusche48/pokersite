@@ -7,8 +7,8 @@ const { publicTableState } = require('../engine/gameStateMachine');
 
 async function listTables(req, res) {
   const { game_type, chip_mode, status = 'waiting' } = req.query;
-  // Las mesas privadas (con código) no aparecen en el lobby
-  let query = 'SELECT * FROM tables_cash WHERE invite_code IS NULL';
+  // Las mesas privadas (con código) y las de club no aparecen en el lobby global
+  let query = 'SELECT * FROM tables_cash WHERE invite_code IS NULL AND club_id IS NULL';
   const params = [];
   if (game_type) { query += ' AND game_type = ?'; params.push(game_type); }
   if (chip_mode) { query += ' AND chip_mode = ?'; params.push(chip_mode); }
@@ -102,4 +102,34 @@ async function getByCode(req, res) {
   res.json(rows[0]);
 }
 
-module.exports = { listTables, getTable, createTable, createPrivateTable, getByCode };
+// POST /clubs/:id/tables — el DUEÑO del club crea una mesa cash con rake
+async function createClubTable(req, res) {
+  const clubId = req.params.id;
+  const { isClubOwner } = require('./clubsController');
+  if (!(await isClubOwner(clubId, req.player.id))) {
+    return res.status(403).json({ error: 'Solo el dueño del club puede crear mesas' });
+  }
+  const { name, smallBlind = 5, bigBlind = 10, maxSeats = 6, rakePct = 0, rakeCapBB = 0 } = req.body;
+  const tableName = (name || `Mesa del club`).trim().slice(0, 40);
+  const sb = Number(smallBlind), bb = Number(bigBlind);
+  const rake = Math.min(10, Math.max(0, Number(rakePct) || 0));       // 0–10 %
+  const cap = Math.min(5, Math.max(0, Math.round(Number(rakeCapBB) || 0))); // 0–5 BB
+  if (!(sb > 0) || !(bb > 0) || sb > bb || bb > 1000) return res.status(400).json({ error: 'Ciegas inválidas' });
+  if (![2, 4, 6, 9].includes(Number(maxSeats))) return res.status(400).json({ error: 'Asientos: 2, 4, 6 o 9' });
+
+  const id = uuidv4();
+  const buyInMin = bb * 20, buyInMax = bb * 200;
+  await pool.query(
+    `INSERT INTO tables_cash (id, name, game_type, chip_mode, max_seats, small_blind, big_blind, buy_in_min, buy_in_max, club_id, rake_pct, rake_cap_bb)
+     VALUES (?, ?, 'holdem', 'play', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, tableName, maxSeats, sb, bb, buyInMin, buyInMax, clubId, rake, cap]
+  );
+  const table = tm.createTable({ id, name: tableName, gameType: 'holdem', chipMode: 'play', maxSeats, smallBlind: sb, bigBlind: bb, buyInMin, buyInMax });
+  const live = tm.getTable(id);
+  live.clubId = clubId;
+  live.rakePct = rake;
+  live.rakeCapBB = cap;
+  res.status(201).json({ id, name: tableName, clubId, smallBlind: sb, bigBlind: bb, rakePct: rake, rakeCapBB: cap, buyInMin, buyInMax });
+}
+
+module.exports = { listTables, getTable, createTable, createPrivateTable, getByCode, createClubTable };

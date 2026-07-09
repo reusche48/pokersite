@@ -1,5 +1,6 @@
 'use strict';
 
+const pool = require('../config/db');
 const { createDeck, shuffle, deal } = require('./deck');
 const PotManager = require('./potManager');
 const { validateAction } = require('./actionValidator');
@@ -514,6 +515,40 @@ function runShowdown(table, earlyEnd = false) {
   }
 
   const awards = table.potManager.awardPots(rankedPlayers);
+
+  // ── Rake del club (mesas cash de club): % del bote con tope en BB.
+  // Regla estándar "sin flop no hay comisión". Se descuenta proporcionalmente
+  // de los premios (los side pots ya están resueltos por potManager).
+  if (table.clubId && table.rakePct > 0 && !table.isTournament && table.community.length >= 3) {
+    const totalAwarded = Object.values(awards).reduce((a, b) => a + b, 0);
+    if (totalAwarded > 0) {
+      let rake = Math.round(totalAwarded * (table.rakePct / 100));
+      if (table.rakeCapBB > 0) rake = Math.min(rake, table.rakeCapBB * table.bigBlind);
+      if (rake > 0) {
+        let restante = rake;
+        const ids = Object.keys(awards);
+        ids.forEach((pid, i) => {
+          const parte = i === ids.length - 1
+            ? restante // el último absorbe el redondeo
+            : Math.min(restante, Math.round(rake * (awards[pid] / totalAwarded)));
+          awards[pid] -= parte;
+          restante -= parte;
+        });
+        table.handLogger.log(null, 'rake', rake, 0);
+        // Persistencia async: caja del club + auditoría
+        pool.query('UPDATE clubs SET treasury = treasury + ? WHERE id = ?', [rake, table.clubId])
+          .catch(e => console.error('[rake]', e.message));
+        pool.query(
+          `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'rake', ?)`,
+          [table.seats.find(s => s.playerId)?.playerId || null, -rake, table.clubId]
+        ).catch(() => {});
+        emitToTable(table.id, 'chat_received', {
+          playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
+          text: `💼 Comisión del club: ${rake}`,
+        });
+      }
+    }
+  }
 
   // Apply awards
   const winners = [];

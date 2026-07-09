@@ -8,6 +8,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { StatsPage } from './pages/StatsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { HandReplayPage } from './pages/HandReplayPage';
+import { ClubPage } from './pages/ClubPage';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminBotsPage } from './pages/admin/AdminBotsPage';
 import { AdminTournamentsPage } from './pages/admin/AdminTournamentsPage';
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/historial" element={<HistoryPage />} />
             <Route path="/estadisticas" element={<StatsPage />} />
             <Route path="/perfil" element={<ProfilePage />} />
+            <Route path="/club/:id" element={<ClubPage />} />
             <Route path="/replay/:id" element={<HandReplayPage />} />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
             <Route path="/admin" element={<AdminDashboardPage />} />

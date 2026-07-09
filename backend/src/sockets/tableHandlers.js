@@ -29,6 +29,26 @@ module.exports = function registerTableHandlers(socket, io) {
           maxSeats: t.max_seats, smallBlind: t.small_blind, bigBlind: t.big_blind,
           buyInMin: t.buy_in_min, buyInMax: t.buy_in_max,
         });
+        // Mesa de club: restaurar club y rake al rehidratar tras un reinicio
+        if (t.club_id) {
+          const live = tm.getTable(t.id);
+          live.clubId = t.club_id;
+          live.rakePct = parseFloat(t.rake_pct) || 0;
+          live.rakeCapBB = Number(t.rake_cap_bb) || 0;
+        }
+      }
+
+      // Mesa de club: solo los miembros del club pueden sentarse.
+      // (Los bots están exentos — solo el dueño del club puede sentarlos.)
+      if (table.clubId) {
+        const [[mem]] = await pool.query(
+          `SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?
+           UNION SELECT 1 FROM players WHERE id = ? AND is_bot = 1`,
+          [table.clubId, player.id, player.id]
+        );
+        if (!mem) {
+          return socket.emit('error', { code: 'NOT_CLUB_MEMBER', message: 'Esta mesa es de un club — únete al club primero' });
+        }
       }
 
       // Un socket solo debe estar en UNA sala de mesa a la vez. Al entrar a una

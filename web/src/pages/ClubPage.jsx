@@ -1,0 +1,381 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { Avatar } from '../components/table/Avatar';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+
+// Velocidades de ciegas (mismos presets que el panel admin)
+const SPEEDS = {
+  normal: { label: 'Normal (3 min)', schedule: null },
+  turbo: {
+    label: 'Turbo (30s)',
+    schedule: [
+      { smallBlind: 20, bigBlind: 40, minutes: 0.5 },
+      { smallBlind: 50, bigBlind: 100, minutes: 0.5 },
+      { smallBlind: 150, bigBlind: 300, minutes: 0.5, ante: 30 },
+      { smallBlind: 400, bigBlind: 800, minutes: 0.5, ante: 80 },
+      { smallBlind: 1000, bigBlind: 2000, minutes: 99, ante: 200 },
+    ],
+  },
+  deep: {
+    label: 'Deep (6 min)',
+    schedule: [
+      { smallBlind: 5, bigBlind: 10, minutes: 6 },
+      { smallBlind: 10, bigBlind: 20, minutes: 6 },
+      { smallBlind: 20, bigBlind: 40, minutes: 6 },
+      { smallBlind: 40, bigBlind: 80, minutes: 6, ante: 10 },
+      { smallBlind: 80, bigBlind: 160, minutes: 6, ante: 20 },
+      { smallBlind: 150, bigBlind: 300, minutes: 99, ante: 40 },
+    ],
+  },
+};
+
+const LEVELS = [5, 6, 7, 8, 9, 10];
+
+export function ClubPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { player } = useAuth();
+  const [club, setClub] = useState(null);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('partidas');
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [buyInModal, setBuyInModal] = useState(null);
+  const [buyIn, setBuyIn] = useState('');
+  // Bots del dueño
+  const [botLevel, setBotLevel] = useState(6);
+  const [botCount, setBotCount] = useState(3);
+  // Crear mesa
+  const [mName, setMName] = useState('');
+  const [mSB, setMSB] = useState(5);
+  const [mBB, setMBB] = useState(10);
+  const [mSeats, setMSeats] = useState(6);
+  const [mRake, setMRake] = useState(5);
+  const [mCap, setMCap] = useState(3);
+  // Crear torneo
+  const [tName, setTName] = useState('');
+  const [tMax, setTMax] = useState(9);
+  const [tBuyIn, setTBuyIn] = useState(100);
+  const [tFee, setTFee] = useState(10);
+  const [tBounty, setTBounty] = useState(0);
+  const [tSpeed, setTSpeed] = useState('turbo');
+  const [tStart, setTStart] = useState('');
+
+  async function load() {
+    try {
+      const { data } = await api.get(`/clubs/${id}`);
+      setClub(data);
+      setError(null);
+    } catch (e) {
+      setError(e.response?.data?.error || 'No se pudo cargar el club');
+    }
+  }
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 6000);
+    const tick = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => { clearInterval(t); clearInterval(tick); };
+  }, [id]);
+
+  function copyCode() {
+    navigator.clipboard?.writeText(club.clubCode);
+    toast.success(`ID ${club.clubCode} copiado — compártelo por WhatsApp`);
+  }
+
+  async function joinTournament(tid) {
+    try {
+      const { data } = await api.post(`/tournaments/${tid}/register`);
+      if (data.tableId) { navigate(`/table/${data.tableId}?buyIn=1500`); return; }
+      toast.success('¡Inscrito! Te avisaremos cuando arranque.');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo inscribir'); }
+  }
+  async function enterTournament(tid) {
+    try {
+      const { data } = await api.get(`/tournaments/${tid}/my-table`);
+      navigate(`/table/${data.tableId}?buyIn=1500`);
+    } catch (e) { toast.error(e.response?.data?.error || 'No se encontró tu mesa'); }
+  }
+  async function addTournamentBots(tid) {
+    try {
+      const { data } = await api.post(`/clubs/${id}/tournaments/${tid}/bots`, { level: botLevel, count: botCount });
+      toast.success(`${data.added} bots agregados${data.started ? ' — ¡torneo iniciado!' : ''}`);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al agregar bots'); }
+  }
+  async function addTableBots(tableId) {
+    try {
+      const { data } = await api.post(`/clubs/${id}/tables/${tableId}/bots`, { level: botLevel, count: botCount, buyIn: 500 });
+      toast.success(`${data.seated} bots sentados`);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al sentar bots'); }
+  }
+  async function kick(pid) {
+    try { await api.delete(`/clubs/${id}/members/${pid}`); toast.success('Miembro expulsado'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error'); }
+  }
+  async function createTable() {
+    try {
+      const { data } = await api.post(`/clubs/${id}/tables`, {
+        name: mName || 'Mesa del club', smallBlind: mSB, bigBlind: mBB, maxSeats: mSeats,
+        rakePct: mRake, rakeCapBB: mCap,
+      });
+      toast.success(`Mesa "${data.name}" creada`);
+      setTab('partidas'); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al crear la mesa'); }
+  }
+  async function createTournament() {
+    try {
+      await api.post(`/clubs/${id}/tournaments`, {
+        name: tName || 'Torneo del club', maxPlayers: tMax, buyIn: tBuyIn, fee: tFee,
+        bounty: tBounty, blindSchedule: SPEEDS[tSpeed]?.schedule || null, startsAt: tStart || null,
+      });
+      toast.success(tStart ? 'Torneo programado' : 'Torneo creado');
+      setTab('partidas'); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al crear el torneo'); }
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center gap-4">
+        <p>{error}</p>
+        <button onClick={() => navigate('/')} className="bg-green-700 px-5 py-2 rounded-lg font-bold">Volver al lobby</button>
+      </div>
+    );
+  }
+  if (!club) return <div className="min-h-screen bg-gray-950 text-green-200 flex items-center justify-center animate-pulse">♣ Cargando club...</div>;
+
+  const TABS = [
+    { k: 'partidas', label: '🃏 Partidas' },
+    { k: 'miembros', label: `👥 Miembros (${club.members.length})` },
+    ...(club.isOwner ? [{ k: 'crear', label: '➕ Crear' }] : []),
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white lobby-bg">
+      {/* Cabecera del club */}
+      <header className="border-b border-purple-900/50 bg-gradient-to-b from-purple-950/60 to-transparent px-4 py-5 relative" style={{ zIndex: 10 }}>
+        <div className="max-w-4xl mx-auto flex items-center gap-4 flex-wrap">
+          <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white">←</button>
+          <span className="text-4xl">{club.emblem}</span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-black truncate">{club.name}</h1>
+            <button onClick={copyCode} className="text-sm text-purple-300 hover:text-purple-100 font-mono" title="Copiar ID">
+              ID del club: <span className="font-bold tracking-widest">{club.clubCode}</span> 📋
+            </button>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            {club.isOwner && (
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">Caja del club</div>
+                <div className="text-lg font-black text-yellow-400">💼 {Number(club.treasury).toLocaleString()}</div>
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Pestañas */}
+        <div className="max-w-4xl mx-auto flex gap-2 mt-4 overflow-x-auto">
+          {TABS.map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${tab === t.k ? 'bg-purple-700 text-white' : 'bg-gray-800/80 text-gray-400 hover:text-white'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        {/* ── PARTIDAS ── */}
+        {tab === 'partidas' && (
+          <>
+            {club.isOwner && (
+              <div className="mb-5 flex items-center gap-2 text-xs bg-gray-900/70 border border-gray-800 rounded-xl px-3 py-2 flex-wrap">
+                <span className="text-gray-400 font-bold">🤖 Bots:</span>
+                <span className="text-gray-500">nivel</span>
+                <select value={botLevel} onChange={e => setBotLevel(Number(e.target.value))} className="bg-gray-800 border border-gray-700 rounded px-2 py-1">
+                  {LEVELS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span className="text-gray-500">cantidad</span>
+                <input type="number" min={1} max={8} value={botCount} onChange={e => setBotCount(Number(e.target.value))}
+                  className="w-14 bg-gray-800 border border-gray-700 rounded px-2 py-1" />
+                <span className="text-gray-500">→ usa el botón "+ Bots" de cada partida</span>
+              </div>
+            )}
+
+            <h2 className="font-bold mb-3">🏆 Torneos del club</h2>
+            {club.tournaments.length === 0 && <p className="text-sm text-gray-500 mb-6">Ninguno todavía.{club.isOwner ? ' Crea uno en la pestaña ➕.' : ''}</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+              {club.tournaments.map(t => {
+                const mine = !!t.am_registered;
+                const eliminated = mine && t.my_final_position !== null;
+                const playing = mine && t.my_final_position === null;
+                const running = t.status === 'running';
+                const full = t.registered >= t.max_players;
+                let countdown = null;
+                if (!running && t.starts_at) {
+                  const diff = new Date(t.starts_at).getTime() - nowTick;
+                  countdown = diff > 0 ? `${Math.floor(diff / 60000)}m ${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}s` : 'por comenzar...';
+                }
+                return (
+                  <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-yellow-800/40">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-bold">{t.name}</h3>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                        {running ? 'En curso' : `${t.registered}/${t.max_players}`}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-300 mb-1">
+                      Entrada: <span className="text-white font-mono">{Math.round(t.buy_in)}{Number(t.fee) > 0 ? `+${Math.round(t.fee)}` : ''}</span>
+                      <span className="mx-2">·</span>
+                      Bote: <span className="text-yellow-400 font-mono">{Math.round(t.prize_pool)}</span>
+                      {Number(t.bounty) > 0 && <><span className="mx-2">·</span>🎯 {Math.round(t.bounty)}</>}
+                    </div>
+                    {countdown && <div className="text-sm text-yellow-300 font-semibold mb-2">🕐 Empieza en {countdown}</div>}
+                    <div className="flex gap-2 mt-2">
+                      {running && playing ? (
+                        <button onClick={() => enterTournament(t.id)} className="flex-1 bg-green-700 hover:bg-green-600 font-bold py-2 rounded-xl text-sm">▶ Entrar</button>
+                      ) : running && (eliminated || !mine) && t.late_reg_open ? (
+                        <button onClick={() => joinTournament(t.id)} className="flex-1 bg-purple-700 hover:bg-purple-600 font-bold py-2 rounded-xl text-sm">
+                          {eliminated ? '🔄 Re-entrar' : '🕐 Tardía'} ({Math.round(t.buy_in) + Math.round(t.fee)})
+                        </button>
+                      ) : running ? (
+                        <button disabled className="flex-1 bg-gray-700 opacity-40 font-bold py-2 rounded-xl text-sm">{eliminated ? `Eliminado (${t.my_final_position}º)` : 'En curso'}</button>
+                      ) : (
+                        <button onClick={() => joinTournament(t.id)} disabled={full || mine}
+                          className="flex-1 bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 font-bold py-2 rounded-xl text-sm">
+                          {mine ? 'Inscrito ✓' : full ? 'Completo' : `Inscribirme (${Math.round(t.buy_in) + Math.round(t.fee)})`}
+                        </button>
+                      )}
+                      {club.isOwner && t.status === 'registering' && (
+                        <button onClick={() => addTournamentBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <h2 className="font-bold mb-3">💵 Mesas cash del club</h2>
+            {club.tables.length === 0 && <p className="text-sm text-gray-500">Ninguna todavía.{club.isOwner ? ' Crea una en la pestaña ➕.' : ''}</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {club.tables.map(t => (
+                <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-green-800/40">
+                  <div className="flex justify-between items-start mb-1">
+                    <h3 className="font-bold">{t.name}</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
+                  </div>
+                  <div className="text-sm text-gray-300 mb-3">
+                    Ciegas <span className="text-white font-mono">{Math.round(t.small_blind)}/{Math.round(t.big_blind)}</span>
+                    {Number(t.rake_pct) > 0 && <><span className="mx-2">·</span>💼 rake {Number(t.rake_pct)}% (máx {t.rake_cap_bb}BB)</>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setBuyInModal(t); setBuyIn(String(t.buy_in_min)); }}
+                      className="flex-1 bg-green-700 hover:bg-green-600 font-bold py-2 rounded-xl text-sm">Sentarme</button>
+                    {club.isOwner && (
+                      <button onClick={() => addTableBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── MIEMBROS ── */}
+        {tab === 'miembros' && (
+          <div className="space-y-2 max-w-lg">
+            {club.members.map(m => (
+              <div key={m.player_id} className="flex items-center gap-3 bg-gray-900/70 border border-gray-800 rounded-xl px-3 py-2">
+                <Avatar nickname={m.nickname} avatarConfig={typeof m.avatar_config === 'string' ? JSON.parse(m.avatar_config || 'null') : m.avatar_config} size={34} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-sm truncate">{m.nickname}{m.player_id === player?.id ? ' (tú)' : ''}</div>
+                  <div className="text-[11px] text-gray-500">{m.role === 'owner' ? '👑 Dueño' : 'Miembro'}</div>
+                </div>
+                {club.isOwner && m.player_id !== player?.id && (
+                  <button onClick={() => kick(m.player_id)} className="text-xs bg-red-900/70 hover:bg-red-800 px-3 py-1.5 rounded-lg">Expulsar</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── CREAR (solo dueño) ── */}
+        {tab === 'crear' && club.isOwner && (
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+              <h2 className="font-bold">💵 Nueva mesa cash</h2>
+              <div><Label className="text-[10px] text-gray-500">Nombre</Label>
+                <Input value={mName} onChange={e => setMName(e.target.value)} placeholder="Mesa del club" /></div>
+              <div className="flex gap-2">
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Ciega chica</Label>
+                  <Input type="number" value={mSB} onChange={e => setMSB(Number(e.target.value))} /></div>
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Ciega grande</Label>
+                  <Input type="number" value={mBB} onChange={e => setMBB(Number(e.target.value))} /></div>
+                <div className="w-24"><Label className="text-[10px] text-gray-500">Asientos</Label>
+                  <select value={mSeats} onChange={e => setMSeats(Number(e.target.value))} className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-2 text-sm">
+                    {[2, 4, 6, 9].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select></div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Comisión (rake) % — 0 a 10</Label>
+                  <Input type="number" min={0} max={10} value={mRake} onChange={e => setMRake(Number(e.target.value))} /></div>
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Tope en ciegas grandes — 0 a 5</Label>
+                  <Input type="number" min={0} max={5} value={mCap} onChange={e => setMCap(Number(e.target.value))} /></div>
+              </div>
+              <p className="text-[11px] text-gray-500">La comisión se cobra de cada bote (solo si hubo flop) y va a la caja del club.</p>
+              <Button onClick={createTable} className="w-full font-bold">Crear mesa</Button>
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+              <h2 className="font-bold">🏆 Nuevo torneo</h2>
+              <div><Label className="text-[10px] text-gray-500">Nombre</Label>
+                <Input value={tName} onChange={e => setTName(e.target.value)} placeholder="Torneo del club" /></div>
+              <div className="flex gap-2">
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Jugadores (2–30)</Label>
+                  <Input type="number" min={2} max={30} value={tMax} onChange={e => setTMax(Number(e.target.value))} /></div>
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Buy-in</Label>
+                  <Input type="number" min={0} value={tBuyIn} onChange={e => setTBuyIn(Number(e.target.value))} /></div>
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Comisión (fee)</Label>
+                  <Input type="number" min={0} value={tFee} onChange={e => setTFee(Number(e.target.value))} /></div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Bounty por cabeza</Label>
+                  <Input type="number" min={0} value={tBounty} onChange={e => setTBounty(Number(e.target.value))} /></div>
+                <div className="flex-1"><Label className="text-[10px] text-gray-500">Velocidad</Label>
+                  <select value={tSpeed} onChange={e => setTSpeed(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-2 text-sm">
+                    {Object.entries(SPEEDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select></div>
+              </div>
+              <div><Label className="text-[10px] text-gray-500">Inicio programado (opcional)</Label>
+                <Input type="datetime-local" value={tStart} onChange={e => setTStart(e.target.value)} /></div>
+              <p className="text-[11px] text-gray-500">La entrada es "buy-in + fee": el buy-in va al pozo de premios y el fee a la caja del club.</p>
+              <Button onClick={createTournament} className="w-full font-bold">Crear torneo</Button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Modal de buy-in para sentarse en una mesa del club */}
+      <Dialog open={!!buyInModal} onOpenChange={(o) => { if (!o) setBuyInModal(null); }}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader><DialogTitle>Sentarme en {buyInModal?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <Label className="text-xs text-gray-400">
+              Buy-in ({Math.round(buyInModal?.buy_in_min || 0)}–{Math.round(buyInModal?.buy_in_max || 0)})
+            </Label>
+            <Input type="number" value={buyIn} onChange={e => setBuyIn(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBuyInModal(null)}>Cancelar</Button>
+            <Button onClick={() => { navigate(`/table/${buyInModal.id}?buyIn=${buyIn}`); setBuyInModal(null); }} className="font-bold">Entrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

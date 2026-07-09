@@ -27,6 +27,7 @@ app.use('/api/players', require('./src/routes/players'));
 app.use('/api/hands', require('./src/routes/hands'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/tournaments', require('./src/routes/tournaments'));
+app.use('/api/clubs', require('./src/routes/clubs'));
 
 // ── Digital Asset Links (para el APK/TWA sin barra del navegador) ──
 // El contenido (con la huella SHA-256 de la firma del APK) se configura en la

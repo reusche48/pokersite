@@ -152,6 +152,42 @@ async function setupDb() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    // ── MODO CLUBES (estilo PPPoker) ──
+    await conn.query(`CREATE TABLE IF NOT EXISTS clubs (
+      id         CHAR(36)      NOT NULL,
+      club_code  VARCHAR(8)    NOT NULL UNIQUE,
+      name       VARCHAR(40)   NOT NULL,
+      emblem     VARCHAR(8)    NOT NULL DEFAULT '♣',
+      owner_id   CHAR(36)      NOT NULL,
+      treasury   DECIMAL(12,2) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_owner (owner_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    await conn.query(`CREATE TABLE IF NOT EXISTS club_members (
+      club_id   CHAR(36) NOT NULL,
+      player_id CHAR(36) NOT NULL,
+      role      ENUM('owner','member') NOT NULL DEFAULT 'member',
+      joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (club_id, player_id),
+      INDEX idx_player (player_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Mesas de club: comisión (rake) configurable por el dueño
+    try {
+      await conn.query(`ALTER TABLE tables_cash ADD COLUMN club_id CHAR(36) NULL, ADD COLUMN rake_pct DECIMAL(4,2) NOT NULL DEFAULT 0, ADD COLUMN rake_cap_bb INT NOT NULL DEFAULT 0, ADD INDEX idx_club (club_id)`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
+    // Torneos de club: comisión de inscripción (buy-in + fee)
+    try {
+      await conn.query(`ALTER TABLE tournaments ADD COLUMN club_id CHAR(36) NULL, ADD COLUMN fee DECIMAL(10,2) NOT NULL DEFAULT 0, ADD INDEX idx_t_club (club_id)`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
     // Bots: el nivel real y la personalidad viven aislados de players
     await conn.query(`CREATE TABLE IF NOT EXISTS bots (
       bot_id           CHAR(36)     NOT NULL,

@@ -126,6 +126,10 @@ export function LobbyPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now()); // reloj para cuentas regresivas
   const [joinCode, setJoinCode] = useState(''); // código de mesa privada
+  const [myClubs, setMyClubs] = useState([]);
+  const [clubCode, setClubCode] = useState('');
+  const [newClubName, setNewClubName] = useState('');
+  const [showCreateClub, setShowCreateClub] = useState(false);
   const [showNotifBtn, setShowNotifBtn] = useState(() => canAskNotifications());
   const isMobile = useIsMobile();
 
@@ -139,6 +143,7 @@ export function LobbyPage() {
     connect();
     fetchTables();
     fetchTournaments();
+    fetchClubs();
     const t = setInterval(() => { fetchTables(); fetchTournaments(); }, 8000);
 
     // Cuando mi torneo arranca, el server me avisa → entro a la mesa
@@ -166,6 +171,29 @@ export function LobbyPage() {
       const { data } = await api.get('/tournaments');
       setTournaments(data);
     } catch {}
+  }
+
+  async function fetchClubs() {
+    try { const { data } = await api.get('/clubs/mine'); setMyClubs(data); } catch {}
+  }
+
+  async function createClub() {
+    try {
+      const { data } = await api.post('/clubs', { name: newClubName });
+      toast.success(`¡Club "${data.name}" creado! ID: ${data.clubCode}`, { duration: 9000 });
+      setShowCreateClub(false); setNewClubName('');
+      navigate(`/club/${data.id}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo crear el club'); }
+  }
+
+  async function joinClubByCode() {
+    const code = clubCode.trim().toUpperCase();
+    if (!code) return;
+    try {
+      const { data } = await api.post('/clubs/join', { code });
+      toast.success(`¡Bienvenido a ${data.name}!`);
+      navigate(`/club/${data.clubId}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'ID de club no válido'); }
   }
 
   async function joinTournament(id) {
@@ -366,6 +394,51 @@ export function LobbyPage() {
             </button>
           </div>
         )}
+
+        {/* ── Clubes (estilo PPPoker) ── */}
+        <div className="mb-8 bg-gray-800/70 border border-purple-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-bold mb-1">♣ Clubes</h2>
+          <p className="text-sm text-gray-400 mb-4">Crea tu club, comparte el ID y organiza tus propias mesas y torneos con comisión para tu caja.</p>
+          {myClubs.length > 0 && (
+            <div className="flex gap-3 flex-wrap mb-4">
+              {myClubs.map(c => (
+                <button key={c.id} onClick={() => navigate(`/club/${c.id}`)}
+                  className="flex items-center gap-2 bg-purple-950/60 hover:bg-purple-900/70 border border-purple-700/50 rounded-xl px-4 py-2 transition-colors">
+                  <span className="text-2xl">{c.emblem}</span>
+                  <span className="text-left">
+                    <span className="block font-bold text-sm">{c.name}</span>
+                    <span className="block text-[11px] text-gray-400">{c.role === 'owner' ? '👑 Tu club' : 'Miembro'} · {c.members} 👥 · ID {c.club_code}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            {showCreateClub ? (
+              <div className="flex gap-2 items-center">
+                <input value={newClubName} onChange={e => setNewClubName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && createClub()}
+                  placeholder="Nombre de tu club" maxLength={40} autoFocus
+                  className="w-52 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2" />
+                <button onClick={createClub} className="bg-purple-700 hover:bg-purple-600 font-bold px-4 py-2 rounded-xl">Crear</button>
+                <button onClick={() => setShowCreateClub(false)} className="text-gray-400 hover:text-white px-2">✕</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowCreateClub(true)}
+                className="bg-purple-700 hover:bg-purple-600 text-white font-bold px-5 py-2 rounded-xl transition-colors">
+                ♣ Crear mi club
+              </button>
+            )}
+            <span className="text-gray-500 text-sm">o</span>
+            <div className="flex gap-2">
+              <input value={clubCode} onChange={e => setClubCode(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === 'Enter' && joinClubByCode()}
+                placeholder="ID DEL CLUB" maxLength={8}
+                className="w-36 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-center font-mono tracking-widest uppercase" />
+              <button onClick={joinClubByCode} className="bg-gray-700 hover:bg-gray-600 font-bold px-4 py-2 rounded-xl">Unirme</button>
+            </div>
+          </div>
+        </div>
 
         {/* Home games: mesas privadas con código */}
         <div className="mb-8 bg-gray-800/70 border border-purple-800/40 rounded-2xl p-5">

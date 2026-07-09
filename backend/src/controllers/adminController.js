@@ -100,4 +100,19 @@ async function dashboard(req, res) {
   });
 }
 
-module.exports = { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard };
+// POST /clubs/:id/tables/:tableId/bots — el dueño del club sienta bots en SU mesa
+async function seatClubBots(req, res) {
+  const { isClubOwner } = require('./clubsController');
+  if (!(await isClubOwner(req.params.id, req.player.id))) {
+    return res.status(403).json({ error: 'Solo el dueño del club puede sentar bots' });
+  }
+  const table = tm.getTable(req.params.tableId);
+  if (!table || table.clubId !== req.params.id) return res.status(404).json({ error: 'Esa mesa no es de este club (¿está viva?)' });
+  const { level, count = 1, buyIn } = req.body;
+  if (![5, 6, 7, 8, 9, 10].includes(Number(level))) return res.status(400).json({ error: 'Nivel debe ser 5-10' });
+  const n = Math.max(1, Math.min(Number(count) || 1, 8));
+  const result = await botManager.seatBots({ tableId: req.params.tableId, level: Number(level), count: n, buyIn: buyIn ? Number(buyIn) : undefined });
+  res.json(result);
+}
+
+module.exports = { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, seatClubBots };

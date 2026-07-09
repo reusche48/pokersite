@@ -20,7 +20,7 @@ async function listTournaments(req, res) {
   const [rows] = await pool.query(
     `SELECT t.*, (SELECT COUNT(*) FROM tournament_registrations r WHERE r.tournament_id = t.id) AS registered
      FROM tournaments t
-     WHERE t.status IN ('registering','running')
+     WHERE t.status IN ('registering','running') AND t.club_id IS NULL
      ORDER BY t.created_at DESC LIMIT 50`
   );
   const me = playerFromReq(req);
@@ -105,34 +105,63 @@ async function initScheduler() {
   } catch (e) { console.error('[Torneos] initScheduler:', e.message); }
 }
 
-// POST /tournaments  (admin) → crear Sit&Go
+// Núcleo de creación de torneo (lo usan el admin global y los dueños de club).
 // Opcionales: startsAt (inicio programado), buyIn=0 (freeroll),
-// addedPrize (premio que aporta la casa), bounty (recompensa por eliminación).
-async function createTournament(req, res) {
-  const { name, maxPlayers = 6, blindSchedule = null, startsAt = null } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+// addedPrize (premio que aporta la casa), bounty (recompensa por eliminación),
+// fee (comisión de inscripción → caja del club).
+async function doCreateTournament(body, creatorId, clubId = null) {
+  const { name, maxPlayers = 6, blindSchedule = null, startsAt = null } = body;
+  if (!name || !name.trim()) throw { http: 400, msg: 'Nombre requerido' };
   const max = Math.min(Math.max(Number(maxPlayers) || 6, 2), MAX_FIELD);
-  const buyInNum = req.body.buyIn === undefined ? 100 : Math.max(0, Number(req.body.buyIn) || 0);
-  const bountyNum = Math.max(0, Number(req.body.bounty) || 0);
-  const addedPrize = Math.max(0, Number(req.body.addedPrize) || 0);
-  if (bountyNum > buyInNum) return res.status(400).json({ error: 'El bounty no puede superar el buy-in' });
-  if (buyInNum === 0 && addedPrize === 0) return res.status(400).json({ error: 'Un freeroll necesita premio añadido' });
+  const buyInNum = body.buyIn === undefined ? 100 : Math.max(0, Number(body.buyIn) || 0);
+  const bountyNum = Math.max(0, Number(body.bounty) || 0);
+  const feeNum = clubId ? Math.max(0, Number(body.fee) || 0) : 0;
+  const addedPrize = Math.max(0, Number(body.addedPrize) || 0);
+  if (bountyNum > buyInNum) throw { http: 400, msg: 'El bounty no puede superar el buy-in' };
+  if (feeNum > buyInNum) throw { http: 400, msg: 'La comisión no puede superar el buy-in' };
+  if (buyInNum === 0 && addedPrize === 0) throw { http: 400, msg: 'Un freeroll necesita premio añadido' };
   let startsAtDate = null;
   if (startsAt) {
     startsAtDate = new Date(startsAt);
-    if (isNaN(startsAtDate.getTime())) return res.status(400).json({ error: 'Fecha/hora inválida' });
+    if (isNaN(startsAtDate.getTime())) throw { http: 400, msg: 'Fecha/hora inválida' };
   }
   const id = uuidv4();
   const scheduleJson = JSON.stringify(Array.isArray(blindSchedule) && blindSchedule.length ? blindSchedule : DEFAULT_BLINDS);
   const payoutJson = JSON.stringify(defaultPayout(max));
   await pool.query(
     `INSERT INTO tournaments
-       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, starts_at, bounty, created_by)
-     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, ?, ?, ?, 'registering', ?, ?, ?)`,
-    [id, name.trim(), max, buyInNum, addedPrize, payoutJson, scheduleJson, startsAtDate, bountyNum, req.player.id]
+       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, starts_at, bounty, fee, club_id, created_by)
+     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, ?, ?, ?, 'registering', ?, ?, ?, ?, ?)`,
+    [id, name.trim(), max, buyInNum, addedPrize, payoutJson, scheduleJson, startsAtDate, bountyNum, feeNum, clubId, creatorId]
   );
   if (startsAtDate) scheduleStart(id, startsAtDate.getTime());
-  res.status(201).json({ id, name: name.trim(), maxPlayers: max, buyIn: buyInNum, bounty: bountyNum, addedPrize, startsAt: startsAtDate });
+  return { id, name: name.trim(), maxPlayers: max, buyIn: buyInNum, bounty: bountyNum, fee: feeNum, addedPrize, startsAt: startsAtDate, clubId };
+}
+
+// POST /tournaments  (admin global)
+async function createTournament(req, res) {
+  try {
+    const r = await doCreateTournament(req.body, req.player.id, null);
+    res.status(201).json(r);
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[createTournament]', e); res.status(500).json({ error: 'Error al crear torneo' });
+  }
+}
+
+// POST /clubs/:id/tournaments  (dueño del club)
+async function createClubTournament(req, res) {
+  try {
+    const { isClubOwner } = require('./clubsController');
+    if (!(await isClubOwner(req.params.id, req.player.id))) {
+      return res.status(403).json({ error: 'Solo el dueño del club puede crear torneos' });
+    }
+    const r = await doCreateTournament(req.body, req.player.id, req.params.id);
+    res.status(201).json(r);
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[createClubTournament]', e); res.status(500).json({ error: 'Error al crear torneo' });
+  }
 }
 
 // Inscribe a un jugador (cobra el buy-in a play_chips y suma al bote de premios)
@@ -147,14 +176,31 @@ async function registerPlayer(tournamentId, playerId) {
     if (cnt.n >= t.max_players) throw { http: 400, msg: 'Torneo lleno' };
     const [[already]] = await conn.query('SELECT 1 x FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tournamentId, playerId]);
     if (already) throw { http: 400, msg: 'Ya estás inscrito' };
+    // Torneo de club: solo miembros (los bots están exentos — los mete el dueño)
+    if (t.club_id) {
+      const [[bot]] = await conn.query('SELECT is_bot FROM players WHERE id = ?', [playerId]);
+      if (!bot?.is_bot) {
+        const [[mem]] = await conn.query('SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?', [t.club_id, playerId]);
+        if (!mem) throw { http: 403, msg: 'Este torneo es de un club — únete al club primero' };
+      }
+    }
     const buyIn = parseFloat(t.buy_in) || 0;
+    const fee = parseFloat(t.fee) || 0;
+    const total = buyIn + fee; // "buy-in + fee": el fee va a la caja del club
     const [[p]] = await conn.query('SELECT play_chips FROM players WHERE id = ? FOR UPDATE', [playerId]);
-    if (!p || p.play_chips < buyIn) throw { http: 400, msg: 'Fichas insuficientes para el buy-in' };
-    await conn.query('UPDATE players SET play_chips = play_chips - ? WHERE id = ?', [buyIn, playerId]);
+    if (!p || p.play_chips < total) throw { http: 400, msg: `Fichas insuficientes (necesitas ${total})` };
+    await conn.query('UPDATE players SET play_chips = play_chips - ? WHERE id = ?', [total, playerId]);
     await conn.query('INSERT INTO tournament_registrations (tournament_id, player_id) VALUES (?, ?)', [tournamentId, playerId]);
     // En torneos bounty, la parte de la recompensa se reserva (se paga al cazador)
     const poolAdd = Math.max(0, buyIn - (parseFloat(t.bounty) || 0));
     await conn.query('UPDATE tournaments SET prize_pool = prize_pool + ? WHERE id = ?', [poolAdd, tournamentId]);
+    if (fee > 0 && t.club_id) {
+      await conn.query('UPDATE clubs SET treasury = treasury + ? WHERE id = ?', [fee, t.club_id]);
+      await conn.query(
+        `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'rake', ?)`,
+        [playerId, -fee, t.club_id]
+      );
+    }
     await conn.query(
       `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'tournament_buyin', ?)`,
       [playerId, -buyIn, tournamentId]
@@ -173,12 +219,21 @@ async function registerPlayer(tournamentId, playerId) {
 // Transaccional: si algo falla, no se descuentan fichas.
 async function chargeLateEntry(t, playerId, reentry) {
   const buyIn = parseFloat(t.buy_in) || 0;
+  const fee = parseFloat(t.fee) || 0;
+  const total = buyIn + fee;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [[p]] = await conn.query('SELECT play_chips FROM players WHERE id = ? FOR UPDATE', [playerId]);
-    if (!p || p.play_chips < buyIn) throw { http: 400, msg: 'Fichas insuficientes para el buy-in' };
-    await conn.query('UPDATE players SET play_chips = play_chips - ? WHERE id = ?', [buyIn, playerId]);
+    if (!p || p.play_chips < total) throw { http: 400, msg: `Fichas insuficientes (necesitas ${total})` };
+    await conn.query('UPDATE players SET play_chips = play_chips - ? WHERE id = ?', [total, playerId]);
+    if (fee > 0 && t.club_id) {
+      await conn.query('UPDATE clubs SET treasury = treasury + ? WHERE id = ?', [fee, t.club_id]);
+      await conn.query(
+        `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'rake', ?)`,
+        [playerId, -fee, t.club_id]
+      );
+    }
     if (reentry) {
       await conn.query(
         'UPDATE tournament_registrations SET final_position = NULL, prize_won = NULL WHERE tournament_id = ? AND player_id = ?',
@@ -214,6 +269,11 @@ async function register(req, res) {
 
     if (t.status === 'running') {
       if (!isLateRegOpen(tid)) return res.status(400).json({ error: 'La inscripción tardía ya cerró' });
+      // Torneo de club: solo miembros
+      if (t.club_id) {
+        const [[mem]] = await pool.query('SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?', [t.club_id, pid]);
+        if (!mem) return res.status(403).json({ error: 'Este torneo es de un club — únete al club primero' });
+      }
       const [[reg]] = await pool.query(
         'SELECT final_position FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]
       );
@@ -225,8 +285,12 @@ async function register(req, res) {
         addPrize: Math.max(0, buyIn - (parseFloat(t.bounty) || 0)),
       });
       if (!tableId) {
-        // Sin asiento libre → reembolso completo (con rastro de auditoría)
-        await pool.query('UPDATE players SET play_chips = play_chips + ? WHERE id = ?', [buyIn, pid]);
+        // Sin asiento libre → reembolso completo (buy-in + fee, con auditoría)
+        const feeR = parseFloat(t.fee) || 0;
+        await pool.query('UPDATE players SET play_chips = play_chips + ? WHERE id = ?', [buyIn + feeR, pid]);
+        if (feeR > 0 && t.club_id) {
+          await pool.query('UPDATE clubs SET treasury = treasury - ? WHERE id = ?', [feeR, t.club_id]);
+        }
         const poolAdd = Math.max(0, buyIn - (parseFloat(t.bounty) || 0));
         await pool.query('UPDATE tournaments SET prize_pool = prize_pool - ? WHERE id = ?', [poolAdd, tid]);
         // (delta positivo con el mismo reason = reversa del cobro)
@@ -273,30 +337,56 @@ async function unregister(req, res) {
 }
 
 // POST /tournaments/:id/bots  (admin) → rellenar con N bots de un nivel
-async function fillBots(req, res) {
-  const { level, count = 1 } = req.body;
-  if (![5, 6, 7, 8, 9, 10].includes(Number(level))) return res.status(400).json({ error: 'Nivel 5-10' });
-  const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [req.params.id]);
-  if (!t || t.status !== 'registering') return res.status(400).json({ error: 'Inscripciones cerradas' });
-  const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [req.params.id]);
+// Núcleo del relleno con bots (lo usan el admin global y los dueños de club)
+async function doFillBots(tournamentId, level, count) {
+  if (![5, 6, 7, 8, 9, 10].includes(Number(level))) throw { http: 400, msg: 'Nivel 5-10' };
+  const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tournamentId]);
+  if (!t || t.status !== 'registering') throw { http: 400, msg: 'Inscripciones cerradas' };
+  const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [tournamentId]);
   const room = t.max_players - cnt.n;
   const n = Math.min(Number(count) || 1, room);
-  if (n <= 0) return res.status(400).json({ error: 'Torneo lleno' });
+  if (n <= 0) throw { http: 400, msg: 'Torneo lleno' };
   const [bots] = await pool.query(
     `SELECT b.bot_id FROM bots b
      WHERE b.level = ? AND b.bot_id NOT IN (SELECT player_id FROM tournament_registrations WHERE tournament_id = ?)
      ORDER BY RAND() LIMIT ?`,
-    [Number(level), req.params.id, n]
+    [Number(level), tournamentId, n]
   );
   let added = 0;
   for (const b of bots) {
-    try { await registerPlayer(req.params.id, b.bot_id); added++; } catch {}
+    try { await registerPlayer(tournamentId, b.bot_id); added++; } catch {}
   }
   // Si con esto se llenó el cupo, arranca solo
   if (cnt.n + added >= t.max_players) {
-    startTournament(req.params.id).catch(e => console.error('[torneo autostart bots]', e.message));
+    startTournament(tournamentId).catch(e => console.error('[torneo autostart bots]', e.message));
   }
-  res.json({ added, started: cnt.n + added >= t.max_players });
+  return { added, started: cnt.n + added >= t.max_players };
+}
+
+// POST /tournaments/:id/bots  (admin global)
+async function fillBots(req, res) {
+  try {
+    res.json(await doFillBots(req.params.id, req.body.level, req.body.count ?? 1));
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[fillBots]', e); res.status(500).json({ error: 'Error al agregar bots' });
+  }
+}
+
+// POST /clubs/:id/tournaments/:tid/bots  (dueño del club, en SU torneo)
+async function fillClubBots(req, res) {
+  try {
+    const { isClubOwner } = require('./clubsController');
+    if (!(await isClubOwner(req.params.id, req.player.id))) {
+      return res.status(403).json({ error: 'Solo el dueño del club puede agregar bots' });
+    }
+    const [[t]] = await pool.query('SELECT club_id FROM tournaments WHERE id = ?', [req.params.tid]);
+    if (!t || t.club_id !== req.params.id) return res.status(404).json({ error: 'Ese torneo no es de este club' });
+    res.json(await doFillBots(req.params.tid, req.body.level, req.body.count ?? 1));
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[fillClubBots]', e); res.status(500).json({ error: 'Error al agregar bots' });
+  }
 }
 
 // POST /tournaments/:id/start  (admin) → forzar inicio
@@ -323,4 +413,4 @@ function standings(req, res) {
   res.json(data);
 }
 
-module.exports = { listTournaments, getTournament, createTournament, register, unregister, fillBots, start, myTable, standings, initScheduler };
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, myTable, standings, initScheduler };
