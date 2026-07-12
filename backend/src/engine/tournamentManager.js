@@ -581,7 +581,7 @@ function getStandings(tournamentId) {
     if (!tb) return;
     for (const s of tb.seats) {
       if (s.playerId && rt.remaining.has(s.playerId)) {
-        alive.push({ playerId: s.playerId, nickname: s.nickname || rt.nicks?.[s.playerId] || '—', stack: s.stack || 0, table: ti + 1 });
+        alive.push({ playerId: s.playerId, nickname: s.nickname || rt.nicks?.[s.playerId] || '—', stack: s.stack || 0, table: ti + 1, tableId: tid });
       }
     }
   });
