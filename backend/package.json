@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
+    "test": "node --test",
     "db:setup": "node -e \"require('./src/config/setupDb')()\""
   },
   "keywords": [],

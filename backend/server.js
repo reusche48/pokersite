@@ -7,10 +7,22 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const setupDb = require('./src/config/setupDb');
 const initSockets = require('./src/sockets');
+const log = require('./src/config/logger');
 
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+// Health check para el orquestador (Railway/Docker): verifica el proceso y la
+// conexión a MySQL. 200 = listo, 503 = la DB no responde.
+app.get('/health', async (req, res) => {
+  try {
+    await require('./src/config/db').query('SELECT 1');
+    res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+  } catch (e) {
+    res.status(503).json({ status: 'db_down', error: e.code || e.message });
+  }
+});
 
 // Rate-limit en auth: frena fuerza bruta de contraseñas sin molestar el juego.
 const rateLimit = require('express-rate-limit');
@@ -59,7 +71,7 @@ if (fs.existsSync(distPath)) {
 }
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  log.error('unhandled request error', { path: req.path, method: req.method, err: err.message, stack: err.stack });
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -71,17 +83,17 @@ const PORT = process.env.PORT || 4000;
 
 // Safety net: a bug in one hand must not kill the whole server
 process.on('uncaughtException', (err) => {
-  console.error('[FATAL-caught]', err);
+  log.error('uncaughtException', { err: err.message, stack: err.stack });
 });
 process.on('unhandledRejection', (err) => {
-  console.error('[REJECTION-caught]', err);
+  log.error('unhandledRejection', { err: err?.message || String(err), stack: err?.stack });
 });
 
 setupDb()
   .then(async () => {
     // Auto-provisionamiento (admin/bots/mesa) idempotente para bases nuevas
     try { await require('./src/config/bootstrap')(); } catch (e) { console.error('[bootstrap]', e.message); }
-    server.listen(PORT, () => console.log(`[Server] Listening on port ${PORT}`));
+    server.listen(PORT, () => log.info('server listening', { port: PORT, env: process.env.NODE_ENV || 'development' }));
     // Reprogramar torneos con inicio por fecha/hora tras un reinicio
     try { require('./src/controllers/tournamentsController').initScheduler(); } catch (e) { console.error('[Torneos] scheduler:', e.message); }
     // Restaurar torneos que estaban en curso (persistencia ante reinicios)

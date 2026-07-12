@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/dev-dist
+.git
+.github
+*.md
+backend/.env
+backend/data
+avatars-review
+web/public/characters
+admintok.txt
+*.log
