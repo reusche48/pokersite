@@ -52,15 +52,16 @@ export function ChatBox({ chat, onSend, onEmote, onReaction }) {
         <input
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="Type here..."
+          placeholder="Escribe aquí..."
           maxLength={200}
+          aria-label="Mensaje de chat"
           className="flex-1 min-w-0 bg-black/50 text-gray-300 text-[11px] px-2 py-1 rounded border border-gray-700 focus:outline-none focus:border-green-600"
         />
         <button
           type="submit"
           className="flex-shrink-0 bg-green-800 hover:bg-green-700 text-white text-[10px] px-2 py-1 rounded font-semibold"
         >
-          Send
+          Enviar
         </button>
       </form>
     </div>

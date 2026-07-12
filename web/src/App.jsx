@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { RequireAdmin } from './components/common/RequireAdmin';
 import { LobbyPage } from './pages/LobbyPage';
 import { TablePage } from './pages/TablePage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -22,6 +24,7 @@ const Table25DDemoPage = lazy(() => import('./pages/Table25DDemoPage').then(m =>
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <SocketProvider>
         <Toaster theme="dark" position="top-center" richColors closeButton />
@@ -45,14 +48,15 @@ export default function App() {
               </Suspense>
             } />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
-            <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route path="/admin/bots" element={<AdminBotsPage />} />
-            <Route path="/admin/torneos" element={<AdminTournamentsPage />} />
-            <Route path="/admin/precision" element={<AdminAccuracyPage />} />
-            <Route path="/admin/seguridad" element={<AdminSecurityPage />} />
+            <Route path="/admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
+            <Route path="/admin/bots" element={<RequireAdmin><AdminBotsPage /></RequireAdmin>} />
+            <Route path="/admin/torneos" element={<RequireAdmin><AdminTournamentsPage /></RequireAdmin>} />
+            <Route path="/admin/precision" element={<RequireAdmin><AdminAccuracyPage /></RequireAdmin>} />
+            <Route path="/admin/seguridad" element={<RequireAdmin><AdminSecurityPage /></RequireAdmin>} />
           </Routes>
         </BrowserRouter>
       </SocketProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }

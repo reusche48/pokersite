@@ -322,6 +322,14 @@ async function setupDb() {
       FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+    // ── Índices de filtrado (evitan full-scans en lobby/perfiles) ──
+    // errno 1061 = ER_DUP_KEYNAME (el índice ya existe) → idempotente.
+    const addIndex = async (sql) => { try { await conn.query(sql); } catch (e) { if (e.errno !== 1061) throw e; } };
+    await addIndex('ALTER TABLE tables_cash ADD INDEX idx_status_created (status, created_at)');
+    await addIndex('ALTER TABLE tournaments ADD INDEX idx_status_created (status, created_at)');
+    await addIndex('ALTER TABLE tournament_registrations ADD INDEX idx_player (player_id)');
+    await addIndex('ALTER TABLE chip_transactions ADD INDEX idx_reason_created (reason, created_at)');
+
     // ── Tabla puente hand_players: pertenencia (y neto) por mano. Permite
     // consultar el historial/stats de un jugador con un JOIN indexado en vez de
     // un JSON_SEARCH sobre players_json (full-scan que no escala con las manos).
