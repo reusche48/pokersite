@@ -418,4 +418,50 @@ function standings(req, res) {
   res.json(data);
 }
 
-module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, myTable, standings, initScheduler };
+// POST /tournaments/:id/cancel (admin) — cancela un torneo EN INSCRIPCIÓN y
+// reembolsa buy-in+fee a todos los inscritos, revierte el fee de la caja del
+// club y libera los buy-ins bloqueados (antes no habia forma de recuperarlos).
+async function cancelTournament(req, res) {
+  const tid = req.params.id;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[t]] = await conn.query('SELECT * FROM tournaments WHERE id = ? FOR UPDATE', [tid]);
+    if (!t) { await conn.rollback(); return res.status(404).json({ error: 'Torneo no encontrado' }); }
+    if (t.status !== 'registering') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Solo se pueden cancelar torneos en inscripción' });
+    }
+    const [regs] = await conn.query('SELECT player_id FROM tournament_registrations WHERE tournament_id = ?', [tid]);
+    const buyIn = parseFloat(t.buy_in) || 0, fee = parseFloat(t.fee) || 0, total = buyIn + fee;
+    const chipCol = t.chip_mode === 'real' ? 'real_chips' : 'play_chips';
+    for (const r of regs) {
+      if (total > 0) {
+        await conn.query(`UPDATE players SET ${chipCol} = ${chipCol} + ? WHERE id = ?`, [total, r.player_id]);
+        await conn.query(
+          `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'tournament_buyin', ?)`,
+          [r.player_id, t.chip_mode, total, tid]
+        );
+      }
+    }
+    // Revertir los fees que se acumularon en la caja del club al inscribirse.
+    if (t.club_id && fee > 0 && regs.length) {
+      await conn.query('UPDATE clubs SET treasury = GREATEST(0, treasury - ?) WHERE id = ?', [fee * regs.length, t.club_id]);
+    }
+    await conn.query('DELETE FROM tournament_registrations WHERE tournament_id = ?', [tid]);
+    await conn.query("UPDATE tournaments SET status = 'cancelled' WHERE id = ?", [tid]);
+    await conn.commit();
+    // Cancelar el arranque programado si lo tenía
+    const timer = startSchedules.get(tid);
+    if (timer) { clearTimeout(timer); startSchedules.delete(tid); }
+    res.json({ ok: true, refunded: regs.length, totalPorJugador: total });
+  } catch (e) {
+    await conn.rollback();
+    console.error('[cancelTournament]', e.message);
+    res.status(500).json({ error: 'No se pudo cancelar el torneo' });
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, cancelTournament, myTable, standings, initScheduler };
