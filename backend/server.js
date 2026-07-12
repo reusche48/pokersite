@@ -86,6 +86,8 @@ setupDb()
     try { require('./src/controllers/tournamentsController').initScheduler(); } catch (e) { console.error('[Torneos] scheduler:', e.message); }
     // Restaurar torneos que estaban en curso (persistencia ante reinicios)
     try { require('./src/engine/tournamentManager').resumeTournaments(); } catch (e) { console.error('[Torneos] resume:', e.message); }
+    // Reembolsar los stacks de las mesas cash que quedaron en RAM al reiniciar
+    try { await require('./src/engine/cashPersistence').resumeCashTables(); } catch (e) { console.error('[Cash] resume:', e.message); }
   })
   .catch(err => {
     console.error('[DB] Setup failed:', err);

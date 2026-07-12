@@ -2,6 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const mysql = require('mysql2/promise');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 async function seed() {
   const conn = await mysql.createConnection({
@@ -13,12 +14,17 @@ async function seed() {
   });
 
   const id = uuidv4();
-  const hash = await bcrypt.hash('admin123', 10);
+  const email = (process.env.ADMIN_EMAIL || 'admin@pokersite.com').toLowerCase();
+  // Nunca hardcodear una contraseña conocida. Toma ADMIN_PASSWORD del entorno
+  // o genera una aleatoria de un solo uso y la muestra.
+  const envPass = process.env.ADMIN_PASSWORD;
+  const pass = envPass || crypto.randomBytes(12).toString('base64url');
+  const hash = await bcrypt.hash(pass, 10);
   await conn.query(
     `INSERT INTO players (id, email, nickname, password_hash, play_chips, real_chips, is_admin)
      VALUES (?, ?, ?, ?, 10000, 0, 1)
      ON DUPLICATE KEY UPDATE is_admin = 1`,
-    [id, 'admin@pokersite.com', 'Admin', hash]
+    [id, email, 'Admin', hash]
   );
 
   // Create a default table
@@ -29,7 +35,8 @@ async function seed() {
     [tableId]
   );
 
-  console.log('Admin creado: admin@pokersite.com / admin123');
+  console.log(`Admin creado: ${email}`);
+  if (!envPass) console.log(`Contraseña de un solo uso (cámbiala): ${pass}`);
   console.log('Mesa creada: Mesa Principal (6 jugadores, 5/10 blinds)');
   await conn.end();
 }

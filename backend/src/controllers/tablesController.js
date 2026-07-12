@@ -36,8 +36,12 @@ async function getTable(req, res) {
 async function createTable(req, res) {
   const { name, gameType = 'holdem', chipMode = 'play', maxSeats = 6, smallBlind = 5, bigBlind = 10, buyInMin = 100, buyInMax = 1000 } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Nombre requerido' });
-  if (!['holdem', 'omaha', 'five_card_draw', 'seven_card_stud'].includes(gameType)) {
-    return res.status(400).json({ error: 'Tipo de juego inválido' });
+  // Solo Texas Hold'em está implementado. Las carpetas variants/{omaha,
+  // sevenCardStud,fiveCardDraw} están vacías y el motor reparte SIEMPRE 2
+  // cartas evaluando como Hold'em: aceptar esos tipos crea mesas que juegan
+  // mal en silencio. Se bloquean hasta implementar un router de variante real.
+  if (gameType !== 'holdem') {
+    return res.status(400).json({ error: 'Por ahora solo está disponible Texas Hold\'em' });
   }
   if (!['play', 'real'].includes(chipMode)) return res.status(400).json({ error: 'Modo de fichas inválido' });
   if (![2, 4, 6, 9].includes(Number(maxSeats))) return res.status(400).json({ error: 'Asientos: 2, 4, 6 o 9' });

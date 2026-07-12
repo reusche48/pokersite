@@ -12,6 +12,9 @@ node_modules/
 web/dist/
 web/dist-ssr/
 
+# ── Modelo ML entrenado (se regenera con /admin/ml/train) ──
+backend/data/
+
 # ── Archivos de prueba y logs generados durante el desarrollo ──
 *.log
 bot*.txt
@@ -40,3 +43,6 @@ Thumbs.db
 web/genAvatarCatalog.cjs
 avatars-review/
 web/dev-dist/
+
+# JWT/token de prueba — nunca versionar
+admintok.txt

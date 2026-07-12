@@ -3,6 +3,7 @@
 const pool = require('../config/db');
 const tm = require('../engine/tableManager');
 const { startHand, processAction, publicTableState, handlePlayerExit } = require('../engine/gameStateMachine');
+const { snapshotCashTable } = require('../engine/cashPersistence');
 
 // SQL column whitelist — never interpolate anything else into queries
 const CHIP_COLS = { real: 'real_chips', play: 'play_chips' };
@@ -38,17 +39,22 @@ module.exports = function registerTableHandlers(socket, io) {
         }
       }
 
-      // Mesa de club: solo los miembros del club pueden sentarse.
+      // Mesa de club: miembros activos del club o de un club ALIADO (unión).
       // (Los bots están exentos — solo el dueño del club puede sentarlos.)
       if (table.clubId) {
-        const [[mem]] = await pool.query(
-          `SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?
-           UNION SELECT 1 FROM players WHERE id = ? AND is_bot = 1`,
-          [table.clubId, player.id, player.id]
-        );
-        if (!mem) {
-          return socket.emit('error', { code: 'NOT_CLUB_MEMBER', message: 'Esta mesa es de un club — únete al club primero' });
+        const { canPlayClub } = require('../controllers/clubsController');
+        const [[bot]] = await pool.query('SELECT 1 x FROM players WHERE id = ? AND is_bot = 1', [player.id]);
+        if (!bot && !(await canPlayClub(table.clubId, player.id))) {
+          return socket.emit('error', { code: 'NOT_CLUB_MEMBER', message: 'Esta mesa es de un club — únete al club (o a su unión) primero' });
         }
+      }
+
+      // Mesa de torneo: solo los inscritos, que el manager ya sentó, pueden
+      // entrar (llegan por el rejoin idempotente de más abajo). Un intruso NO
+      // está sentado → se le impide comprar un asiento y jugar contra los
+      // inscritos (evita robo de fichas y corrupción de standings/rebalanceo).
+      if (table.isTournament && !tm.isPlayerSeated(table, player.id)) {
+        return socket.emit('error', { code: 'NOT_IN_TOURNAMENT', message: 'Esta mesa es de un torneo — inscríbete desde el lobby' });
       }
 
       // Un socket solo debe estar en UNA sala de mesa a la vez. Al entrar a una
@@ -97,6 +103,12 @@ module.exports = function registerTableHandlers(socket, io) {
       }
 
       const amount = parseFloat(buyIn);
+      // El buy-in debe ser un entero positivo y finito. Sin esto, un buyIn no
+      // numérico → amount=NaN, y NaN<min y NaN>max son AMBAS falsas: pasaría la
+      // validación y descontaría play_chips - NaN, corrompiendo saldo y bote.
+      if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+        return socket.emit('error', { code: 'INVALID_BUYIN', message: 'Buy-in inválido' });
+      }
       // The previous-stack rule may exceed the table max — that's allowed
       const effectiveMax = Math.max(table.buyInMax, ratholeMin);
       if (amount < table.buyInMin || amount > effectiveMax) {
@@ -173,11 +185,16 @@ module.exports = function registerTableHandlers(socket, io) {
 
       io.to(`table:${tableId}`).emit('player_joined', { seat: { ...seat, cards: [] } });
       socket.emit('table_state', publicTableState(table));
+      // Persistir el nuevo stack para poder reembolsarlo si el server reinicia
+      snapshotCashTable(table);
 
-      // Auto-start hand if 2+ players and game is waiting
+      // Auto-start hand if 2+ players and game is waiting. Timer cancelable y
+      // único (el guard de fase de startHand ya evita el doble reparto, pero
+      // no dejamos timers colgando que se acumulen entre joins).
       const readyPlayers = table.seats.filter(s => s.status === 'active' && s.stack > 0);
       if (readyPlayers.length >= 2 && table.phase === 'waiting') {
-        setTimeout(() => startHand(table), 3000);
+        clearTimeout(table.nextHandTimeout);
+        table.nextHandTimeout = setTimeout(() => startHand(table), 3000);
       }
     } catch (err) {
       console.error('[join_table]', err);
@@ -187,12 +204,71 @@ module.exports = function registerTableHandlers(socket, io) {
     }
   });
 
+  // ── Modo espectador (rail) ── mirar una mesa en vivo SIN sentarse.
+  // Solo recibe el estado público (las cartas privadas nunca viajan por la
+  // sala de la mesa: se envían socket a socket al repartir), así que un
+  // espectador jamás puede ver manos ajenas antes del showdown.
+  socket.on('watch_table', async ({ tableId }) => {
+    try {
+      let table = tm.getTable(tableId);
+      if (!table) {
+        // Igual que join_table: si la mesa cash existe en DB, se rehidrata
+        const [rows] = await pool.query('SELECT * FROM tables_cash WHERE id = ?', [tableId]);
+        if (!rows.length) return socket.emit('error', { code: 'TABLE_NOT_FOUND', message: 'Esa mesa ya no está viva' });
+        const t = rows[0];
+        table = tm.createTable({
+          id: t.id, name: t.name, gameType: t.game_type, chipMode: t.chip_mode,
+          maxSeats: t.max_seats, smallBlind: t.small_blind, bigBlind: t.big_blind,
+          buyInMin: t.buy_in_min, buyInMax: t.buy_in_max,
+        });
+        if (t.club_id) {
+          const live = tm.getTable(t.id);
+          live.clubId = t.club_id;
+          live.rakePct = parseFloat(t.rake_pct) || 0;
+          live.rakeCapBB = Number(t.rake_cap_bb) || 0;
+        }
+      }
+
+      // Mesas de club: solo miembros (o de la unión) pueden mirar
+      if (table.clubId) {
+        const { canPlayClub } = require('../controllers/clubsController');
+        if (!(await canPlayClub(table.clubId, player.id))) {
+          return socket.emit('error', { code: 'NOT_CLUB_MEMBER', message: 'Esta mesa es de un club — únete al club primero' });
+        }
+      }
+
+      // Un socket en una sola sala de mesa a la vez (igual que al sentarse)
+      for (const room of socket.rooms) {
+        if (room.startsWith('table:') && room !== `table:${tableId}`) socket.leave(room);
+      }
+      socket.join(`table:${tableId}`);
+      socket.emit('table_state', publicTableState(table));
+    } catch (err) {
+      console.error('[watch_table]', err);
+      socket.emit('error', { code: 'SERVER_ERROR', message: err.message });
+    }
+  });
+
+  socket.on('unwatch_table', ({ tableId }) => {
+    socket.leave(`table:${tableId}`);
+  });
+
   socket.on('leave_table', async ({ tableId }) => {
     const table = tm.getTable(tableId);
     if (!table) return;
 
     // Fold first if mid-hand so the game keeps moving
     handlePlayerExit(table, player.id);
+
+    // Mesa de torneo: NO se puede "cobrar" el stack al salir. Abandonar un
+    // torneo es dejar que las ciegas te desangren / te eliminen; abonar el
+    // stack a play_chips sería duplicar fichas (pagaste el buy-in y retirarías
+    // 1500+). Se conserva el asiento para que el runtime del torneo siga
+    // consistente (el jugador queda como ausente y se le hace blind-out).
+    if (table.isTournament) {
+      socket.leave(`table:${tableId}`);
+      return;
+    }
 
     const stack = tm.standPlayer(table, player.id);
     if (stack === null) return;
@@ -218,6 +294,8 @@ module.exports = function registerTableHandlers(socket, io) {
 
     socket.leave(`table:${tableId}`);
     io.to(`table:${tableId}`).emit('player_left', { playerId: player.id });
+    // Actualizar el snapshot tras salir (ya no hay que reembolsar este stack)
+    snapshotCashTable(table);
   });
 
   socket.on('game_action', ({ tableId, type, amount }) => {

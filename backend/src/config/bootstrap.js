@@ -6,6 +6,7 @@
 
 const pool = require('./db');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { seedBots } = require('../../seedBots');
 
@@ -14,7 +15,11 @@ async function bootstrap() {
   const [[adm]] = await pool.query('SELECT COUNT(*) n FROM players WHERE is_admin = 1');
   if (adm.n === 0) {
     const email = (process.env.ADMIN_EMAIL || 'admin@pokersite.com').toLowerCase();
-    const pass = process.env.ADMIN_PASSWORD || 'admin123';
+    // NUNCA caer a una contraseña conocida ("admin123") en un despliegue
+    // accesible: sería toma de control total. Si no hay ADMIN_PASSWORD en el
+    // entorno, generamos una ALEATORIA de un solo uso y la mostramos una vez.
+    const envPass = process.env.ADMIN_PASSWORD;
+    const pass = envPass || crypto.randomBytes(12).toString('base64url');
     const hash = await bcrypt.hash(pass, 10);
     await pool.query(
       `INSERT INTO players (id, email, nickname, password_hash, play_chips, real_chips, is_admin)
@@ -23,8 +28,10 @@ async function bootstrap() {
       [uuidv4(), email, hash]
     );
     console.log(`[bootstrap] Admin listo: ${email}`);
-    if (!process.env.ADMIN_PASSWORD) {
-      console.warn('[bootstrap] ⚠️  ADMIN_PASSWORD no definido — se usó "admin123". ¡Defínela en el entorno y reinicia!');
+    if (!envPass) {
+      console.warn('[bootstrap] ⚠️  ADMIN_PASSWORD no definido. Contraseña ALEATORIA de un solo uso:');
+      console.warn(`[bootstrap] ⚠️      ${pass}`);
+      console.warn('[bootstrap] ⚠️  Inicia sesión, cámbiala y define ADMIN_PASSWORD en el entorno.');
     }
   }
 

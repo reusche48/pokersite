@@ -6,6 +6,7 @@ const PotManager = require('./potManager');
 const { validateAction } = require('./actionValidator');
 const HandLogger = require('./handLogger');
 const { bestHand, compareHands } = require('./variants/holdem/handEvaluator');
+const { snapshotCashTable } = require('./cashPersistence');
 
 const ACTION_TIMEOUT_MS = 30_000;
 const TIME_BANK_SECONDS = 30; // banco de tiempo extra por jugador (una vez por mesa)
@@ -14,6 +15,7 @@ const PHASES = ['pre_flop', 'flop', 'turn', 'river', 'showdown'];
 // io is injected at init time
 let _io;
 function setIo(io) { _io = io; }
+function getIo() { return _io; }
 
 function emitToTable(tableId, event, data) {
   if (_io) _io.to(`table:${tableId}`).emit(event, data);
@@ -99,6 +101,11 @@ function publicTableState(table) {
 function startHand(table) {
   // Mesa de torneo ya cerrada/rota: no arrancar más manos
   if (table.tournamentOver) return;
+  // Guard de fase: solo se arranca una mano desde 'waiting'. Hay varios
+  // setTimeout(startHand) pendientes (showdown a 5s, join a 3s); sin este
+  // guard un segundo timer REINICIARÍA una mano en curso, creando un nuevo
+  // PotManager y destruyendo el bote ya descontado de los stacks.
+  if (table.phase !== 'waiting') return;
   // Anyone seated with chips plays the next hand (including players who
   // joined mid-hand and were waiting as sitting_out)
   const readySeats = table.seats.filter(s => s.playerId && s.status !== 'empty' && s.stack > 0);
@@ -247,6 +254,9 @@ function scheduleAction(table) {
   }
 
   table.actionDeadline = Date.now() + ACTION_TIMEOUT_MS;
+  // Momento en que se PIDE la acción → base para medir el tiempo de reacción
+  // (señal clave anti-bot/anti-RTA: humanos varían, las máquinas no).
+  table.actionRequestedAt = Date.now();
   // Send authoritative amounts so the client never derives a stale "owed"
   const toCall = Math.max(0, (table.currentBet || 0) - (table.streetBets[seat.playerId] || 0));
   emitToTable(table.id, 'action_required', {
@@ -267,6 +277,7 @@ function scheduleAction(table) {
     if (bank >= 3) {
       table.timeBanks[pid] = 0;
       table.actionDeadline = Date.now() + bank * 1000;
+      table.actionRequestedAt = Date.now();
       const toCallNow = Math.max(0, (table.currentBet || 0) - (table.streetBets[pid] || 0));
       emitToTable(table.id, 'action_required', {
         playerId: pid,
@@ -303,6 +314,13 @@ function processAction(table, playerId, action, isAuto = false) {
   const seat = table.seats.find(s => s.playerId === playerId);
   const { resolvedType, resolvedAmount, isAllIn } = result;
 
+  // Tiempo de reacción: cuánto tardó en decidir desde que se le pidió la acción.
+  // `auto` marca las decisiones automáticas (timeout) para no ensuciar el perfil
+  // humano. Estos datos alimentan la detección de bots/scripts/RTA.
+  const reactionMs = (!isAuto && table.actionRequestedAt) ? Date.now() - table.actionRequestedAt : null;
+  const timing = { reactionMs, auto: isAuto };
+  table.actionRequestedAt = null;
+
   // Track voluntary actions per street (blinds don't count)
   if (!table._actedThisStreet) table._actedThisStreet = new Set();
   table._actedThisStreet.add(playerId);
@@ -310,12 +328,12 @@ function processAction(table, playerId, action, isAuto = false) {
   switch (resolvedType) {
     case 'fold':
       seat.status = 'folded';
-      table.handLogger.log(playerId, 'fold', 0, table.potManager.totalPot());
+      table.handLogger.log(playerId, 'fold', 0, table.potManager.totalPot(), timing);
       break;
 
     case 'check':
       table.bbHasOption = false;
-      table.handLogger.log(playerId, 'check', 0, table.potManager.totalPot());
+      table.handLogger.log(playerId, 'check', 0, table.potManager.totalPot(), timing);
       break;
 
     case 'call': {
@@ -324,7 +342,7 @@ function processAction(table, playerId, action, isAuto = false) {
       // ALWAYS register the bet in the pot manager (not just all-ins)
       table.potManager.addBet(playerId, resolvedAmount, !!isAllIn);
       if (isAllIn) seat.status = 'all_in';
-      table.handLogger.log(playerId, isAllIn ? 'call_allin' : 'call', resolvedAmount, table.potManager.totalPot());
+      table.handLogger.log(playerId, isAllIn ? 'call_allin' : 'call', resolvedAmount, table.potManager.totalPot(), timing);
       break;
     }
 
@@ -349,7 +367,7 @@ function processAction(table, playerId, action, isAuto = false) {
       table.potManager.addBet(playerId, resolvedAmount, !!isAllIn);
       if (isAllIn) seat.status = 'all_in';
       table.bbHasOption = false;
-      table.handLogger.log(playerId, isAllIn ? 'all_in' : 'raise', resolvedAmount, table.potManager.totalPot());
+      table.handLogger.log(playerId, isAllIn ? 'all_in' : 'raise', resolvedAmount, table.potManager.totalPot(), timing);
       break;
     }
   }
@@ -681,13 +699,21 @@ function runShowdown(table, earlyEnd = false) {
   }
 
   table.phase = 'waiting';
+  table.actionPosition = null; // fuera de mano no hay turno válido
   table.potManager = new PotManager();
 
-  // Torneo: dejar que el manager revise si ya hay ganador o suba las ciegas
+  // Torneo: dejar que el manager revise si ya hay ganador o suba las ciegas.
+  // Cash: snapshot de los stacks para poder reembolsarlos si el server reinicia.
   if (table.isTournament && table.onHandComplete) table.onHandComplete(table);
+  else if (!table.isTournament) snapshotCashTable(table);
 
-  // Auto-start next hand after delay (salvo que el torneo ya haya terminado)
-  if (!table.tournamentOver) setTimeout(() => startHand(table), 5000);
+  // Auto-start next hand after delay (salvo que el torneo ya haya terminado).
+  // Timer cancelable y único: evita acumular timers que dispararían startHand
+  // de más (el guard de fase ya lo protege, pero no dejamos timers colgando).
+  if (!table.tournamentOver) {
+    clearTimeout(table.nextHandTimeout);
+    table.nextHandTimeout = setTimeout(() => startHand(table), 5000);
+  }
 }
 
 // Called when a player leaves mid-hand: fold them and keep the game moving.
@@ -719,4 +745,4 @@ function handlePlayerExit(table, playerId) {
   return true;
 }
 
-module.exports = { startHand, processAction, setIo, publicTableState, handlePlayerExit, emitToTable, emitToPlayer };
+module.exports = { startHand, processAction, setIo, getIo, publicTableState, handlePlayerExit, emitToTable, emitToPlayer };

@@ -6,6 +6,13 @@
 function validateAction(table, playerId, action) {
   const seat = table.seats.find(s => s.playerId === playerId);
   if (!seat) return { valid: false, reason: 'No estás en la mesa' };
+  // Guard de fase: solo se aceptan acciones mientras la mano está en juego.
+  // Tras el showdown la fase es 'waiting'/'showdown' y actionPosition queda
+  // obsoleto; sin esto un cliente manipulado podría descontar stack hacia un
+  // PotManager recién vaciado y corromper los timers.
+  if (!['pre_flop', 'flop', 'turn', 'river'].includes(table.phase)) {
+    return { valid: false, reason: 'La mano no está en juego' };
+  }
   if (table.actionPosition !== seat.position) return { valid: false, reason: 'No es tu turno' };
   if (seat.status !== 'active') return { valid: false, reason: 'No estás activo en la mano' };
 
@@ -35,7 +42,7 @@ function validateAction(table, playerId, action) {
     }
 
     case 'raise': {
-      if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+      if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0) {
         return { valid: false, reason: 'Monto de subida inválido' };
       }
       const raiseTo = amount;                 // total street bet target
