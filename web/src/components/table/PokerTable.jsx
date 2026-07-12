@@ -65,6 +65,38 @@ const LAYOUTS = {
     { seat: { top: '84%', left: '30%' }, bet: { top: '62%', left: '38%' } },
     { seat: { top: '84%', left: '70%' }, bet: { top: '62%', left: '62%' } },
   ],
+  // Full ring (7–9): slots en orden circular [héroe abajo-centro, luego hacia
+  // la izquierda de la pantalla] repartidos parejos sobre el óvalo del riel.
+  7: [
+    { seat: { top: '85%', left: '50%' }, bet: { top: '66%', left: '50%' } },
+    { seat: { top: '70%', left: '16%' }, bet: { top: '58%', left: '30%' } },
+    { seat: { top: '37%', left: '8%'  }, bet: { top: '42%', left: '26%' } },
+    { seat: { top: '11%', left: '31%' }, bet: { top: '29%', left: '39%' } },
+    { seat: { top: '11%', left: '69%' }, bet: { top: '29%', left: '61%' } },
+    { seat: { top: '37%', left: '92%' }, bet: { top: '42%', left: '74%' } },
+    { seat: { top: '70%', left: '84%' }, bet: { top: '58%', left: '70%' } },
+  ],
+  8: [
+    { seat: { top: '85%', left: '50%' }, bet: { top: '66%', left: '50%' } },
+    { seat: { top: '74%', left: '20%' }, bet: { top: '60%', left: '33%' } },
+    { seat: { top: '46%', left: '7%'  }, bet: { top: '46%', left: '25%' } },
+    { seat: { top: '18%', left: '20%' }, bet: { top: '32%', left: '33%' } },
+    { seat: { top: '7%',  left: '50%' }, bet: { top: '27%', left: '50%' } },
+    { seat: { top: '18%', left: '80%' }, bet: { top: '32%', left: '67%' } },
+    { seat: { top: '46%', left: '93%' }, bet: { top: '46%', left: '75%' } },
+    { seat: { top: '74%', left: '80%' }, bet: { top: '60%', left: '67%' } },
+  ],
+  9: [
+    { seat: { top: '85%', left: '50%' }, bet: { top: '66%', left: '50%' } },
+    { seat: { top: '76%', left: '22%' }, bet: { top: '61%', left: '34%' } },
+    { seat: { top: '53%', left: '8%'  }, bet: { top: '50%', left: '26%' } },
+    { seat: { top: '27%', left: '13%' }, bet: { top: '37%', left: '29%' } },
+    { seat: { top: '9%',  left: '35%' }, bet: { top: '28%', left: '41%' } },
+    { seat: { top: '9%',  left: '65%' }, bet: { top: '28%', left: '59%' } },
+    { seat: { top: '27%', left: '87%' }, bet: { top: '37%', left: '72%' } },
+    { seat: { top: '53%', left: '92%' }, bet: { top: '50%', left: '74%' } },
+    { seat: { top: '76%', left: '78%' }, bet: { top: '61%', left: '66%' } },
+  ],
 };
 
 // Layouts para MÓVIL (pantalla vertical): rivales en la mitad superior,
@@ -111,6 +143,42 @@ const MOBILE_LAYOUTS = {
 // Devuelve slots en orden circular: [héroe, rival1, rival2, ...].
 function buildMobileOval(n) {
   const RX = 43, RY = 37, A = 118; // radios (%) y semi-arco de los rivales (pegados al riel, sin cortarse)
+  // Full ring (7–9) en vertical: el arco genérico dejaría rivales a la altura
+  // del board (las cartas ocupan todo el ancho). Posiciones explícitas que
+  // esquivan esa franja: esquinas abajo, laterales SOBRE el board y fila alta.
+  const MOBILE_RING = {
+    7: [
+      { seat: { top: '88%', left: '50%' }, bet: { top: '72%', left: '50%' } },
+      { seat: { top: '68%', left: '13%' }, bet: { top: '60%', left: '30%' } },
+      { seat: { top: '30%', left: '8%'  }, bet: { top: '39%', left: '27%' } },
+      { seat: { top: '8%',  left: '35%' }, bet: { top: '27%', left: '42%' } },
+      { seat: { top: '8%',  left: '65%' }, bet: { top: '27%', left: '58%' } },
+      { seat: { top: '30%', left: '92%' }, bet: { top: '39%', left: '73%' } },
+      { seat: { top: '68%', left: '87%' }, bet: { top: '60%', left: '70%' } },
+    ],
+    8: [
+      { seat: { top: '88%', left: '50%' }, bet: { top: '72%', left: '50%' } },
+      { seat: { top: '68%', left: '13%' }, bet: { top: '60%', left: '30%' } },
+      { seat: { top: '30%', left: '8%'  }, bet: { top: '39%', left: '27%' } },
+      { seat: { top: '10%', left: '25%' }, bet: { top: '28%', left: '36%' } },
+      { seat: { top: '7%',  left: '50%' }, bet: { top: '26%', left: '50%' } },
+      { seat: { top: '10%', left: '75%' }, bet: { top: '28%', left: '64%' } },
+      { seat: { top: '30%', left: '92%' }, bet: { top: '39%', left: '73%' } },
+      { seat: { top: '68%', left: '87%' }, bet: { top: '60%', left: '70%' } },
+    ],
+    9: [
+      { seat: { top: '88%', left: '50%' }, bet: { top: '72%', left: '50%' } },
+      { seat: { top: '68%', left: '13%' }, bet: { top: '60%', left: '30%' } },
+      { seat: { top: '30%', left: '8%'  }, bet: { top: '39%', left: '27%' } },
+      { seat: { top: '12%', left: '14%' }, bet: { top: '29%', left: '30%' } },
+      { seat: { top: '8%',  left: '38%' }, bet: { top: '27%', left: '43%' } },
+      { seat: { top: '8%',  left: '62%' }, bet: { top: '27%', left: '57%' } },
+      { seat: { top: '12%', left: '86%' }, bet: { top: '29%', left: '70%' } },
+      { seat: { top: '30%', left: '92%' }, bet: { top: '39%', left: '73%' } },
+      { seat: { top: '68%', left: '87%' }, bet: { top: '60%', left: '70%' } },
+    ],
+  };
+  if (n >= 7) return MOBILE_RING[Math.min(n, 9)];
   const rad = (d) => (d * Math.PI) / 180;
   const at = (deg, rx, ry) => ({
     left: `${(50 + rx * Math.cos(rad(deg))).toFixed(1)}%`,
@@ -128,14 +196,14 @@ function buildMobileOval(n) {
   return slots;
 }
 
-export function PokerTable({ tableId, initialBuyIn }) {
+export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
   const { player } = useAuth();
   const navigate = useNavigate();
   const {
     tableState, myCards, reactions, chat, actionRequired, lastWinner, revealedCards,
     animEvents, consumeAnim, joinError,
     clearLastWinner, sendAction, sendReaction, sendChat, leaveTable, revealMyCards,
-  } = useTableState(tableId, initialBuyIn);
+  } = useTableState(tableId, initialBuyIn, spectate);
   const { play, muted, toggleMute } = useSoundManager();
   const { getNote, saveNote } = usePlayerNotes();
   const [profilePlayer, setProfilePlayer] = useState(null); // seat being profiled
@@ -233,11 +301,15 @@ export function PokerTable({ tableId, initialBuyIn }) {
       4: [3, 2, 0, 1],
       5: [4, 3, 0, 1, 2],
       6: [5, 4, 3, 0, 1, 2],
+      // 7–9 ya vienen en orden circular héroe-primero desde LAYOUTS
+      7: [0, 1, 2, 3, 4, 5, 6],
+      8: [0, 1, 2, 3, 4, 5, 6, 7],
+      9: [0, 1, 2, 3, 4, 5, 6, 7, 8],
     };
 
     // Asientos FIJOS anclados a la mesa: se mapean TODAS las sillas (maxSeats),
     // ocupadas o vacías, girando el óvalo para que el héroe quede abajo.
-    const maxSeats = Math.min(seats.length || 6, 6);
+    const maxSeats = Math.min(seats.length || 6, 9);
     const heroIdx = seats.findIndex(s => s.playerId === player?.id);
     const heroRef = heroIdx >= 0 ? heroIdx : 0; // sin sentarme → posición 0 abajo
     const map = new Map();
@@ -305,9 +377,14 @@ export function PokerTable({ tableId, initialBuyIn }) {
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-black/40 text-gray-300 text-xs font-semibold z-10">
         <div className="flex gap-3 items-center">
-          <button onClick={requestLeave} className="hover:text-white transition">{isMobile ? '← Salir' : 'STAND UP'}</button>
+          <button onClick={requestLeave} className="hover:text-white transition">{spectate ? '← Salir' : (isMobile ? '← Salir' : 'STAND UP')}</button>
           <span className="text-gray-600">|</span>
           <span className="text-gray-400">Mano #{tableState.handNumber || 0}</span>
+          {spectate && (
+            <span className="bg-purple-700/80 text-white px-2 py-0.5 rounded-full text-[10px] font-bold animate-pulse">
+              👁 MIRANDO
+            </span>
+          )}
         </div>
         {!isMobile && (
           <div className="text-gray-400">{tableState.name || 'Mesa'} — {tableState.gameType?.replace('_',' ').toUpperCase() || 'HOLDEM'}</div>
