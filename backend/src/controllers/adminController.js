@@ -134,7 +134,8 @@ async function banPlayer(req, res) {
   if (target.is_admin) return res.status(400).json({ error: 'No se puede banear a un admin' });
 
   if (banned) {
-    await pool.query('UPDATE players SET is_banned = 1, ban_reason = ? WHERE id = ?', [reason, targetId]);
+    // token_version++ revoca sus JWT REST inmediatamente (no solo el socket).
+    await pool.query('UPDATE players SET is_banned = 1, ban_reason = ?, token_version = token_version + 1 WHERE id = ?', [reason, targetId]);
   } else {
     // Desbanear limpia motivo y apelación
     await pool.query('UPDATE players SET is_banned = 0, ban_reason = NULL, appeal_text = NULL, appealed_at = NULL WHERE id = ?', [targetId]);

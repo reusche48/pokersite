@@ -1,20 +1,24 @@
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../config/db');
+const log = require('../config/logger');
 
 function signToken(player) {
   return jwt.sign(
-    { id: player.id, nickname: player.nickname, is_admin: player.is_admin },
+    { id: player.id, nickname: player.nickname, is_admin: player.is_admin, tv: player.token_version || 0 },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '7d', algorithm: 'HS256' }
   );
 }
 
-// IP real del cliente (detrás de proxy usa X-Forwarded-For; en LAN, req.ip)
+// IP real del cliente. Con 'trust proxy' configurado en Express, req.ip ya es
+// la IP real (el X-Forwarded-For falsificable queda descartado más allá de los
+// saltos de proxy confiados) — clave para que el límite anti-multicuenta por IP
+// no se evada mandando cabeceras falsas.
 function clientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  return (typeof fwd === 'string' && fwd.split(',')[0].trim()) || req.ip || req.socket?.remoteAddress || '?';
+  return req.ip || req.socket?.remoteAddress || '?';
 }
 
 // Cuántas cuentas de invitado puede crear una misma IP antes de exigir registro.
@@ -67,7 +71,7 @@ async function register(req, res) {
   if (!nickname || !email || !password) {
     return res.status(400).json({ error: 'nickname, email and password required' });
   }
-  if (password.length < 6) return res.status(400).json({ error: 'Password too short' });
+  if (password.length < 8) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
   const [existing] = await pool.query('SELECT id FROM players WHERE email = ?', [email]);
   if (existing.length) return res.status(409).json({ error: 'Email already registered' });
   const id = uuidv4();
@@ -93,8 +97,12 @@ async function login(req, res) {
   });
   const ok = await bcrypt.compare(password, player.password_hash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  // Auto-exclusión (responsible gaming): no dejar entrar mientras esté vigente
+  if (player.excluded_until && new Date(player.excluded_until) > new Date()) {
+    return res.status(403).json({ error: 'Tu cuenta está en autoexclusión temporal', excludedUntil: player.excluded_until });
+  }
   await pool.query('UPDATE players SET last_seen = NOW() WHERE id = ?', [player.id]);
-  const tokenPayload = { id: player.id, nickname: player.nickname, is_admin: player.is_admin };
+  const tokenPayload = { id: player.id, nickname: player.nickname, is_admin: player.is_admin, token_version: player.token_version };
   res.json({
     token: signToken(tokenPayload),
     player: { id: player.id, nickname: player.nickname, play_chips: player.play_chips, real_chips: player.real_chips },
@@ -102,11 +110,11 @@ async function login(req, res) {
 }
 
 async function refreshToken(req, res) {
-  // Token is already verified by authMiddleware
+  // Token is already verified by authMiddleware (que además valida ban/tv)
   const { id, nickname, is_admin } = req.player;
-  const [rows] = await pool.query('SELECT is_banned FROM players WHERE id = ?', [id]);
-  if (!rows.length || rows[0].is_banned) return res.status(403).json({ error: 'Account banned' });
-  res.json({ token: signToken({ id, nickname, is_admin }) });
+  const [[p]] = await pool.query('SELECT is_banned, token_version FROM players WHERE id = ?', [id]);
+  if (!p || p.is_banned) return res.status(403).json({ error: 'Account banned' });
+  res.json({ token: signToken({ id, nickname, is_admin, token_version: p.token_version }) });
 }
 
 // POST /auth/appeal  { email, password, text }
@@ -138,8 +146,73 @@ async function changePassword(req, res) {
   const ok = await bcrypt.compare(currentPassword || '', player.password_hash);
   if (!ok) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
   const hash = await bcrypt.hash(newPassword, 10);
-  await pool.query('UPDATE players SET password_hash = ? WHERE id = ?', [hash, req.player.id]);
-  res.json({ ok: true, message: 'Contraseña actualizada' });
+  // Incrementar token_version: revoca todos los JWT existentes de esta cuenta
+  // (otras sesiones/dispositivos). Se devuelve un token fresco para no cerrar
+  // la sesión del dispositivo que hizo el cambio.
+  const [[nv]] = await pool.query('SELECT token_version + 1 AS tv FROM players WHERE id = ?', [req.player.id]);
+  await pool.query('UPDATE players SET password_hash = ?, token_version = ? WHERE id = ?', [hash, nv.tv, req.player.id]);
+  res.json({ ok: true, message: 'Contraseña actualizada', token: signToken({ id: req.player.id, nickname: req.player.nickname, is_admin: req.player.is_admin, token_version: nv.tv }) });
 }
 
-module.exports = { guestLogin, register, login, refreshToken, appeal, changePassword };
+// ── Recuperación de contraseña ──
+// POST /auth/forgot { email } — genera un token de un solo uso (expira 1h).
+// El envío del correo es pluggable: si no hay proveedor configurado, el token
+// se registra en el log (dev). Siempre responde 200 para no filtrar qué correos
+// existen.
+async function forgotPassword(req, res) {
+  const email = (req.body.email || '').toLowerCase().trim();
+  if (!email) return res.status(400).json({ error: 'email requerido' });
+  try {
+    const [[p]] = await pool.query('SELECT id FROM players WHERE email = ? AND password_hash IS NOT NULL', [email]);
+    if (p) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        'INSERT INTO password_resets (token, player_id, expires_at) VALUES (?, ?, NOW() + INTERVAL 1 HOUR)',
+        [token, p.id]
+      );
+      const link = `${process.env.APP_URL || ''}/reset?token=${token}`;
+      // TODO(infra): enviar por email real (SendGrid/SES). Por ahora al log.
+      log.info('password reset solicitado', { email, resetLink: link });
+    }
+  } catch (e) { log.error('forgotPassword', { err: e.message }); }
+  res.json({ ok: true, message: 'Si el correo existe, enviamos instrucciones para restablecer la contraseña.' });
+}
+
+// POST /auth/reset { token, newPassword } — consume el token y cambia la clave.
+async function resetPassword(req, res) {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'Token y contraseña (mín. 8) requeridos' });
+  }
+  const [[row]] = await pool.query(
+    'SELECT player_id FROM password_resets WHERE token = ? AND used_at IS NULL AND expires_at > NOW()',
+    [token]
+  );
+  if (!row) return res.status(400).json({ error: 'Token inválido o expirado' });
+  const hash = await bcrypt.hash(newPassword, 10);
+  // Cambiar clave + revocar sesiones + marcar el token usado, en transacción.
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('UPDATE players SET password_hash = ?, token_version = token_version + 1 WHERE id = ?', [hash, row.player_id]);
+    await conn.query('UPDATE password_resets SET used_at = NOW() WHERE token = ?', [token]);
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    return res.status(500).json({ error: 'No se pudo restablecer' });
+  } finally {
+    conn.release();
+  }
+  res.json({ ok: true, message: 'Contraseña restablecida. Inicia sesión.' });
+}
+
+// ── Responsible gaming: autoexclusión temporal ──
+// POST /auth/self-exclude { days } (autenticado). Bloquea el acceso N días.
+async function selfExclude(req, res) {
+  const days = Math.min(365, Math.max(1, Math.round(Number(req.body.days) || 0)));
+  if (!days) return res.status(400).json({ error: 'Indica los días (1-365)' });
+  await pool.query('UPDATE players SET excluded_until = NOW() + INTERVAL ? DAY, token_version = token_version + 1 WHERE id = ?', [days, req.player.id]);
+  res.json({ ok: true, message: `Autoexclusión activada por ${days} día(s). No podrás entrar hasta que termine.`, days });
+}
+
+module.exports = { guestLogin, register, login, refreshToken, appeal, changePassword, forgotPassword, resetPassword, selfExclude };

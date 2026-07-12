@@ -15,6 +15,16 @@ module.exports = function registerTableHandlers(socket, io) {
   const { player } = socket; // set by auth middleware
   let joining = false; // prevent concurrent join_table calls
 
+  // Throttle anti-spam de chat/reacciones por socket: máx 10 en 10s.
+  const msgTimes = [];
+  function chatThrottled() {
+    const now = Date.now();
+    while (msgTimes.length && now - msgTimes[0] > 10000) msgTimes.shift();
+    if (msgTimes.length >= 10) return true;
+    msgTimes.push(now);
+    return false;
+  }
+
   socket.on('join_table', async ({ tableId, buyIn }) => {
     if (joining) return;
     joining = true;
@@ -333,6 +343,7 @@ module.exports = function registerTableHandlers(socket, io) {
 
   socket.on('send_reaction', ({ tableId, emoji }) => {
     if (!emoji || emoji.length > 8) return;
+    if (!socket.isBot && chatThrottled()) return;
     io.to(`table:${tableId}`).emit('reaction_received', { playerId: player.id, emoji });
     const table = tm.getTable(tableId);
     if (table?.handLogger && table.phase !== 'waiting') {
@@ -342,6 +353,7 @@ module.exports = function registerTableHandlers(socket, io) {
 
   socket.on('chat_message', ({ tableId, text, type = 'chat' }) => {
     if (!text || text.trim().length > 200) return;
+    if (!socket.isBot && chatThrottled()) return;
     io.to(`table:${tableId}`).emit('chat_received', {
       playerId: player.id,
       nickname: player.nickname,

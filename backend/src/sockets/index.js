@@ -18,18 +18,20 @@ module.exports = function initSockets(io) {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
     if (!token) return next(new Error('No token'));
     try {
-      socket.player = jwt.verify(token, process.env.JWT_SECRET);
+      socket.player = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       return next(new Error('Invalid token'));
     }
-    // El baneo se revisa también aquí, no solo en el login: un JWT vigente
-    // no debe permitir seguir jugando después de un ban.
+    // El baneo y token_version se revisan también aquí: un JWT vigente no debe
+    // permitir seguir jugando tras un ban / cambio de contraseña / autoexclusión.
     try {
-      const [[p]] = await pool.query('SELECT is_banned, is_bot FROM players WHERE id = ?', [socket.player.id]);
+      const [[p]] = await pool.query('SELECT is_banned, is_bot, token_version, excluded_until FROM players WHERE id = ?', [socket.player.id]);
       if (p?.is_banned) return next(new Error('Account banned'));
+      if ((socket.player.tv || 0) !== (p?.token_version || 0)) return next(new Error('Session expired'));
+      if (p?.excluded_until && new Date(p.excluded_until) > new Date()) return next(new Error('Self-excluded'));
       socket.isBot = !!p?.is_bot;
     } catch (e) {
-      console.error('[socket auth] ban check:', e.message);
+      console.error('[socket auth] check:', e.message);
     }
     next();
   });
@@ -108,8 +110,13 @@ module.exports = function initSockets(io) {
             // que NO debe seguir en el snapshot (evita un doble reembolso al
             // reiniciar el server).
             snapshotCashTable(table);
+          } else {
+            // Mid-hand: marcar para retirar y reembolsar al TERMINAR la mano.
+            // Sin esto el asiento sigue 'active' y se le cobran ciegas mano tras
+            // mano (auto-fold) hasta reventar el stack. El motor lo procesa en
+            // runShowdown (phase → waiting).
+            seat.leaveAfterHand = true;
           }
-          // If game is active, the action timeout will auto-fold them
         }
       }
     });

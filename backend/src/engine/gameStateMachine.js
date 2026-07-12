@@ -729,9 +729,26 @@ function runShowdown(table, earlyEnd = false) {
   table.potManager = new PotManager();
 
   // Torneo: dejar que el manager revise si ya hay ganador o suba las ciegas.
-  // Cash: snapshot de los stacks para poder reembolsarlos si el server reinicia.
-  if (table.isTournament && table.onHandComplete) table.onHandComplete(table);
-  else if (!table.isTournament) snapshotCashTable(table);
+  // Cash: retirar/reembolsar a los desconectados a mitad de mano y snapshot.
+  if (table.isTournament && table.onHandComplete) {
+    table.onHandComplete(table);
+  } else if (!table.isTournament) {
+    // Jugadores marcados por el handler de disconnect (se fueron mid-hand):
+    // ahora que la mano terminó, se les retira y reembolsa (dejan de pagar
+    // ciegas). Reembolso fire-and-forget, consistente con el resto de cash.
+    for (const s of table.seats) {
+      if (!s.playerId || !s.leaveAfterHand) continue;
+      const pid = s.playerId, stack = s.stack;
+      const chipCol = table.chipMode === 'real' ? 'real_chips' : 'play_chips';
+      s.playerId = null; s.nickname = null; s.status = 'empty'; s.cards = []; s.stack = 0; s.leaveAfterHand = false;
+      if (stack > 0) {
+        pool.query(`UPDATE players SET ${chipCol} = ${chipCol} + ? WHERE id = ?`, [stack, pid]).catch(() => {});
+        pool.query(`INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'buy_in', ?)`, [pid, table.chipMode, stack, table.id]).catch(() => {});
+      }
+      emitToTable(table.id, 'player_left', { playerId: pid });
+    }
+    snapshotCashTable(table);
+  }
 
   // Auto-start next hand after delay (salvo que el torneo ya haya terminado).
   // Timer cancelable y único: evita acumular timers que dispararían startHand

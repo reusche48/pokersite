@@ -302,6 +302,26 @@ async function setupDb() {
       INDEX idx_target (target_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+    // ── Fase 3: seguridad de cuenta ──
+    // token_version: invalidar todos los JWT de un usuario (ban / cambio de
+    // contraseña) sin esperar a que expiren. excluded_until: auto-exclusión
+    // (responsible gaming) — no puede entrar mientras esté vigente.
+    try {
+      await conn.query(`ALTER TABLE players ADD COLUMN token_version INT NOT NULL DEFAULT 0, ADD COLUMN excluded_until DATETIME NULL`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+    await conn.query(`CREATE TABLE IF NOT EXISTS password_resets (
+      token      CHAR(64) NOT NULL,
+      player_id  CHAR(36) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at    DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (token),
+      INDEX idx_player (player_id),
+      FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
     // ── Tabla puente hand_players: pertenencia (y neto) por mano. Permite
     // consultar el historial/stats de un jugador con un JOIN indexado en vez de
     // un JSON_SEARCH sobre players_json (full-scan que no escala con las manos).

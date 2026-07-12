@@ -9,9 +9,34 @@ const setupDb = require('./src/config/setupDb');
 const initSockets = require('./src/sockets');
 const log = require('./src/config/logger');
 
+const helmet = require('helmet');
+
 const app = express();
-app.use(cors({ origin: '*' }));
+// Detrás de un proxy (Railway/Nginx): confiar solo en N saltos para que req.ip
+// sea la IP real del cliente y NO una X-Forwarded-For falsificada (clave para
+// el límite anti-multicuenta). Configurable por TRUST_PROXY_HOPS (default 1).
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
+
+// Cabeceras de seguridad (HSTS, X-Frame-Options, nosniff…). CSP se deja fuera
+// para no romper la SPA/PWA con scripts inline; se afina aparte si se necesita.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// CORS: por defecto abierto (dev); en producción, lista blanca por
+// ALLOWED_ORIGINS (dominios separados por coma).
+const ALLOWED = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+const corsOrigin = ALLOWED.length ? ALLOWED : '*';
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
+
+// Rate-limit global para rutas que MUTAN estado (crear/unirse/refill…), además
+// del limiter específico de auth. Lecturas quedan libres.
+const rateLimit = require('express-rate-limit');
+const mutationLimiter = rateLimit({
+  windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes, espera un momento' },
+  skip: (req) => req.method === 'GET' || req.method === 'HEAD',
+});
+app.use('/api', mutationLimiter);
 
 // Health check para el orquestador (Railway/Docker): verifica el proceso y la
 // conexión a MySQL. 200 = listo, 503 = la DB no responde.
@@ -25,7 +50,6 @@ app.get('/health', async (req, res) => {
 });
 
 // Rate-limit en auth: frena fuerza bruta de contraseñas sin molestar el juego.
-const rateLimit = require('express-rate-limit');
 const authLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutos
   limit: 30,               // 30 intentos por IP
@@ -76,7 +100,7 @@ app.use((err, req, res, next) => {
 });
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, { cors: { origin: corsOrigin } });
 initSockets(io);
 
 const PORT = process.env.PORT || 4000;
