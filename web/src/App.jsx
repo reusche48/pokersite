@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
@@ -13,6 +14,11 @@ import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminBotsPage } from './pages/admin/AdminBotsPage';
 import { AdminTournamentsPage } from './pages/admin/AdminTournamentsPage';
 import { AdminAccuracyPage } from './pages/admin/AdminAccuracyPage';
+import { AdminSecurityPage } from './pages/admin/AdminSecurityPage';
+// Carga diferida: el código 3D (three.js, ~880 KB) solo se descarga al abrir la
+// mesa 3D — un teléfono de gama baja que nunca la abre no lo descarga jamás.
+const Table3DDemoPage = lazy(() => import('./pages/Table3DDemoPage').then(m => ({ default: m.Table3DDemoPage })));
+const Table25DDemoPage = lazy(() => import('./pages/Table25DDemoPage').then(m => ({ default: m.Table25DDemoPage })));
 
 export default function App() {
   return (
@@ -28,11 +34,22 @@ export default function App() {
             <Route path="/perfil" element={<ProfilePage />} />
             <Route path="/club/:id" element={<ClubPage />} />
             <Route path="/replay/:id" element={<HandReplayPage />} />
+            <Route path="/demo3d" element={
+              <Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa 3D…</div>}>
+                <Table3DDemoPage />
+              </Suspense>
+            } />
+            <Route path="/demo25d" element={
+              <Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa…</div>}>
+                <Table25DDemoPage />
+              </Suspense>
+            } />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/bots" element={<AdminBotsPage />} />
             <Route path="/admin/torneos" element={<AdminTournamentsPage />} />
             <Route path="/admin/precision" element={<AdminAccuracyPage />} />
+            <Route path="/admin/seguridad" element={<AdminSecurityPage />} />
           </Routes>
         </BrowserRouter>
       </SocketProvider>
