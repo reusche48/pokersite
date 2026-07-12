@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const LEVELS = [5, 6, 7, 8, 9, 10];
+const LEVELS = [5, 6, 7, 8, 9, 10, 11, 12];
 
 // Validación del formulario de crear torneo
 const torneoSchema = z.object({

@@ -10,11 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-const LEVELS = [5, 6, 7, 8, 9, 10];
+const LEVELS = [5, 6, 7, 8, 9, 10, 11, 12];
 
 const LEVEL_COLORS = {
   5: 'bg-gray-700', 6: 'bg-sky-800', 7: 'bg-green-800',
   8: 'bg-yellow-700', 9: 'bg-orange-700', 10: 'bg-red-800',
+  11: 'bg-purple-800', 12: 'bg-fuchsia-800',
 };
 
 // Tabla de bots activos: orden por columna + búsqueda (TanStack Table)

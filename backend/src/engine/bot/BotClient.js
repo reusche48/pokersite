@@ -33,6 +33,8 @@ class BotClient {
     this.bigBlind = 10;
     this.smallBlind = 5;
     this.lastAggressorNick = null;
+    // Acción preflop más fuerte de cada rival en ESTA mano (nivel 12: rangos)
+    this.oppPreflop = {};
 
     const PORT = port || process.env.PORT || 4000;
     const token = jwt.sign(
@@ -83,6 +85,7 @@ class BotClient {
       this.myCards = d.holeCards || [];
       this.myStreetBet = 0;
       this.lastAggressorNick = null;
+      this.oppPreflop = {};
       // Nueva mano: cuenta manos vistas de cada rival (para el modelado)
       const opps = this.seats.filter(x => x.playerId && x.playerId !== this.botId).map(x => x.nickname);
       this.engine.noteHandStart(opps);
@@ -107,6 +110,13 @@ class BotClient {
         const nick = this._nickOf(playerId);
         this.engine.observe({ nickname: nick, action: type, phase: this.phase });
         if (['raise', 'all_in'].includes(type)) this.lastAggressorNick = nick;
+        // Acción preflop más fuerte de la mano (raise > call > check)
+        if (this.phase === 'pre_flop' && nick) {
+          const RANKING = { raise: 3, all_in: 3, call: 2, check: 1 };
+          const prev = RANKING[this.oppPreflop[nick]] || 0;
+          const now = RANKING[type] || 0;
+          if (now > prev) this.oppPreflop[nick] = type === 'all_in' ? 'raise' : type;
+        }
       }
     });
 
@@ -135,6 +145,7 @@ class BotClient {
           myPosition: this.myPosition,
           dealerPosition: this.dealerPosition,
           lastAggressorNick: this.lastAggressorNick,
+          oppPreflop: this.oppPreflop,
         };
         let action;
         try { action = this.engine.decide(ctx); }
@@ -170,6 +181,7 @@ class BotClient {
     this.myStreetBet = 0;
     this.currentBet = 0;
     this.lastAggressorNick = null;
+    this.oppPreflop = {};
     this._lastRejected = null;
     try { this.socket.emit('join_table', { tableId: newTableId, buyIn: this.buyIn }); } catch {}
   }

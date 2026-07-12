@@ -18,6 +18,7 @@ const SECTIONS = [
     title: 'Análisis',
     items: [
       { path: '/admin/precision', label: 'Precisión testers', icon: '🎯' },
+      { path: '/admin/seguridad', label: 'Seguridad', icon: '🛡️' },
     ],
   },
 ];

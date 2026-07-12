@@ -1,8 +1,12 @@
 'use strict';
 
-// Siembra 100 bots con nombres humanos peruanos, repartidos en niveles 5–10.
+// Siembra 100 bots con nombres humanos peruanos, repartidos en niveles 5–10,
+// más 12 bots extra de nivel 11 (equity por Monte Carlo) y 8 de nivel 12
+// (rangos + EV de all-in).
 // Idempotente: el ID de cada bot deriva del nombre (MD5), así que reejecutar
-// no duplica. Cada bot recibe una "personalidad" determinista (aggro/tight)
+// no duplica. Los nombres se generan por índice de forma determinista, por lo
+// que agregar bots AL FINAL no cambia los 100 existentes ni sus niveles.
+// Cada bot recibe una "personalidad" determinista (aggro/tight)
 // para que dos bots del mismo nivel no jueguen idéntico.
 
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
@@ -62,16 +66,19 @@ function makeNicknames(n) {
 
 async function seedBots() {
   const LEVELS = [5, 6, 7, 8, 9, 10];
-  const TOTAL = 100;
-  const nicks = makeNicknames(TOTAL);
+  const TOTAL = 100;      // reparto redondo en niveles 5-10 (no cambiar el orden)
+  const EXTRA_11 = 12;    // bots nuevos de nivel 11, añadidos al final
+  const EXTRA_12 = 8;     // bots nuevos de nivel 12, después de los de 11
+  const nicks = makeNicknames(TOTAL + EXTRA_11 + EXTRA_12);
 
   let created = 0;
   const perLevel = {};
   for (let idx = 0; idx < nicks.length; idx++) {
     const nickname = nicks[idx];
     const botId = botIdFor(nickname);
-    // Reparto redondo por nivel → ~16-17 por nivel
-    const level = LEVELS[idx % LEVELS.length];
+    // Reparto redondo por nivel → ~16-17 por nivel; los extra son 11 y 12
+    const level = idx < TOTAL ? LEVELS[idx % LEVELS.length]
+      : (idx < TOTAL + EXTRA_11 ? 11 : 12);
     perLevel[level] = (perLevel[level] || 0) + 1;
 
     // Personalidad determinista: aggro/tight en [-0.12, 0.12]
