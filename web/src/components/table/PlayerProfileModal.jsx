@@ -49,10 +49,10 @@ export function PlayerProfileModal({ player, currentNote, onSave, onClose }) {
 
         {/* Nivel estimado (5-10) */}
         <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">
-          ¿Qué nivel crees que tiene? <span className="text-gray-600 normal-case">(5 novato · 10 experto)</span>
+          ¿Qué nivel crees que tiene? <span className="text-gray-600 normal-case">(5 novato · 12 experto)</span>
         </p>
         <div className="flex gap-1.5">
-          {[5, 6, 7, 8, 9, 10].map(n => (
+          {[5, 6, 7, 8, 9, 10, 11, 12].map(n => (
             <button
               key={n}
               onClick={() => setLevel(level === n ? null : n)}

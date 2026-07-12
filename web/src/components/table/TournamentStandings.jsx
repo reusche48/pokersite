@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import api from '../../services/api';
 
@@ -7,6 +8,14 @@ export function TournamentStandings({ tournamentId, myId, compact = false }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { id: currentTableId } = useParams(); // mesa donde estoy parado ahora
+
+  // Modo espectador: ir a mirar la mesa de otro jugador (rail)
+  function watchTable(tableId) {
+    setOpen(false);
+    navigate(`/table/${tableId}?watch=1`);
+  }
 
   async function load() {
     setOpen(true);
@@ -74,7 +83,18 @@ export function TournamentStandings({ tournamentId, myId, compact = false }) {
                           </span>
                         </span>
                       </span>
-                      <span className="font-mono text-green-400 font-bold">{p.stack.toLocaleString()}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-green-400 font-bold">{p.stack.toLocaleString()}</span>
+                        {p.tableId && p.tableId !== currentTableId && (
+                          <button
+                            onClick={() => watchTable(p.tableId)}
+                            className="text-purple-300 hover:text-white text-xs bg-purple-900/60 hover:bg-purple-700 rounded px-1.5 py-0.5 transition"
+                            title={`Ir a mirar la mesa ${p.table}`}
+                          >
+                            👁
+                          </button>
+                        )}
+                      </span>
                     </div>
                   );
                 })}

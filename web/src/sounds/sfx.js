@@ -10,14 +10,36 @@ function ensureCtx() {
     masterGain.gain.value = 0.5;
     masterGain.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  // iOS también usa el estado 'interrupted' (al cambiar de app o bloquear
+  // el teléfono) — cualquier estado que no sea 'running' se reanuda.
+  if (ctx.state !== 'running') ctx.resume();
   return ctx;
 }
 
-// Resume on first user gesture (autoplay policy)
+// Desbloqueo por gesto del usuario (política de autoplay).
+// iOS Safari históricamente solo desbloquea en touchend/click (no en
+// pointerdown/touchstart), así que escuchamos varios. Además, al volver de
+// segundo plano iOS deja el contexto suspendido: NO removemos los listeners
+// hasta confirmar que quedó corriendo, y reanudamos al volver a la pestaña.
 if (typeof window !== 'undefined') {
-  const resume = () => { try { ensureCtx(); } catch {} window.removeEventListener('pointerdown', resume); };
-  window.addEventListener('pointerdown', resume);
+  const UNLOCK_EVENTS = ['touchend', 'click', 'pointerdown', 'keydown'];
+  const resume = () => {
+    try {
+      ensureCtx();
+      // En iOS un buffer mudo dentro del gesto "destapa" el canal de audio
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
+      if (ctx.state === 'running') {
+        UNLOCK_EVENTS.forEach(e => window.removeEventListener(e, resume));
+      }
+    } catch {}
+  };
+  UNLOCK_EVENTS.forEach(e => window.addEventListener(e, resume));
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state !== 'running') { try { ctx.resume(); } catch {} }
+  });
 }
 
 export function setMuted(m) {

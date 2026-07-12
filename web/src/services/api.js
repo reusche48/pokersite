@@ -1,10 +1,14 @@
 import axios from 'axios';
+import { getFingerprint } from '../lib/fingerprint';
 
 const api = axios.create({ baseURL: '/api' });
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('token');
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  // Huella de dispositivo en cada petición (el servidor la usa en el login de invitado)
+  const fp = getFingerprint();
+  if (fp) cfg.headers['X-Fingerprint'] = fp;
   return cfg;
 });
 

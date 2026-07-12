@@ -73,6 +73,20 @@ export function ProfilePage() {
   const [urlInput, setUrlInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [pwd, setPwd] = useState({ cur: '', next: '', busy: false });
+
+  async function changePassword() {
+    if (pwd.next.length < 8) { toast.error('La nueva contraseña debe tener al menos 8 caracteres'); return; }
+    setPwd(p => ({ ...p, busy: true }));
+    try {
+      await api.post('/auth/change-password', { currentPassword: pwd.cur, newPassword: pwd.next });
+      toast.success('Contraseña actualizada');
+      setPwd({ cur: '', next: '', busy: false });
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo cambiar la contraseña');
+      setPwd(p => ({ ...p, busy: false }));
+    }
+  }
 
   useEffect(() => {
     api.get('/players/me').then(({ data }) => {
@@ -206,6 +220,17 @@ export function ProfilePage() {
               <Button variant="secondary" size="sm" onClick={useUrl}>Usar</Button>
             </div>
             <p className="text-[11px] text-gray-500">La imagen se recorta en cuadrado. Usa solo imágenes que tengas permiso de usar.</p>
+          </div>
+
+          {/* Cambiar contraseña (cuentas con correo) */}
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+            <label className="text-xs text-gray-400 font-semibold block uppercase tracking-wider">🔒 Cambiar contraseña</label>
+            <Input type="password" placeholder="Contraseña actual" value={pwd.cur} onChange={e => setPwd(p => ({ ...p, cur: e.target.value }))} />
+            <Input type="password" placeholder="Nueva contraseña (mín. 8)" value={pwd.next} onChange={e => setPwd(p => ({ ...p, next: e.target.value }))} />
+            <Button variant="secondary" size="sm" disabled={pwd.busy || !pwd.cur || !pwd.next} onClick={changePassword}>
+              {pwd.busy ? 'Guardando…' : 'Actualizar contraseña'}
+            </Button>
+            <p className="text-[11px] text-gray-500">Solo para cuentas con correo. Recomendado si aún usas una contraseña por defecto.</p>
           </div>
         </div>
       </main>

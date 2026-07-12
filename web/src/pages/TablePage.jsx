@@ -8,6 +8,7 @@ export function TablePage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const buyIn = searchParams.get('buyIn') || '500';
+  const spectate = searchParams.get('watch') === '1';
   const { player } = useAuth();
   const { socket, connected, connect } = useSocket();
   const navigate = useNavigate();
@@ -42,5 +43,5 @@ export function TablePage() {
     );
   }
 
-  return <PokerTable tableId={id} initialBuyIn={buyIn} />;
+  return <PokerTable tableId={id} initialBuyIn={buyIn} spectate={spectate} />;
 }
