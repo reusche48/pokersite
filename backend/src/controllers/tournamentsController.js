@@ -176,12 +176,15 @@ async function registerPlayer(tournamentId, playerId) {
     if (cnt.n >= t.max_players) throw { http: 400, msg: 'Torneo lleno' };
     const [[already]] = await conn.query('SELECT 1 x FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tournamentId, playerId]);
     if (already) throw { http: 400, msg: 'Ya estás inscrito' };
-    // Torneo de club: solo miembros (los bots están exentos — los mete el dueño)
+    // Torneo de club: miembros activos del club o de un club aliado (unión).
+    // (Los bots están exentos — los mete el dueño.)
     if (t.club_id) {
       const [[bot]] = await conn.query('SELECT is_bot FROM players WHERE id = ?', [playerId]);
       if (!bot?.is_bot) {
-        const [[mem]] = await conn.query('SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?', [t.club_id, playerId]);
-        if (!mem) throw { http: 403, msg: 'Este torneo es de un club — únete al club primero' };
+        const { canPlayClub } = require('./clubsController');
+        if (!(await canPlayClub(t.club_id, playerId))) {
+          throw { http: 403, msg: 'Este torneo es de un club — únete al club (o a su unión) primero' };
+        }
       }
     }
     const buyIn = parseFloat(t.buy_in) || 0;
@@ -269,10 +272,12 @@ async function register(req, res) {
 
     if (t.status === 'running') {
       if (!isLateRegOpen(tid)) return res.status(400).json({ error: 'La inscripción tardía ya cerró' });
-      // Torneo de club: solo miembros
+      // Torneo de club: miembros activos del club o de un club aliado (unión)
       if (t.club_id) {
-        const [[mem]] = await pool.query('SELECT 1 x FROM club_members WHERE club_id = ? AND player_id = ?', [t.club_id, pid]);
-        if (!mem) return res.status(403).json({ error: 'Este torneo es de un club — únete al club primero' });
+        const { canPlayClub } = require('./clubsController');
+        if (!(await canPlayClub(t.club_id, pid))) {
+          return res.status(403).json({ error: 'Este torneo es de un club — únete al club (o a su unión) primero' });
+        }
       }
       const [[reg]] = await pool.query(
         'SELECT final_position FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]
@@ -339,7 +344,7 @@ async function unregister(req, res) {
 // POST /tournaments/:id/bots  (admin) → rellenar con N bots de un nivel
 // Núcleo del relleno con bots (lo usan el admin global y los dueños de club)
 async function doFillBots(tournamentId, level, count) {
-  if (![5, 6, 7, 8, 9, 10].includes(Number(level))) throw { http: 400, msg: 'Nivel 5-10' };
+  if (![5, 6, 7, 8, 9, 10, 11, 12].includes(Number(level))) throw { http: 400, msg: 'Nivel 5-12' };
   const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tournamentId]);
   if (!t || t.status !== 'registering') throw { http: 400, msg: 'Inscripciones cerradas' };
   const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [tournamentId]);

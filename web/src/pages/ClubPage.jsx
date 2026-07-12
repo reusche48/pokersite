@@ -35,7 +35,7 @@ const SPEEDS = {
   },
 };
 
-const LEVELS = [5, 6, 7, 8, 9, 10];
+const LEVELS = [5, 6, 7, 8, 9, 10, 11, 12];
 
 export function ClubPage() {
   const { id } = useParams();
@@ -57,6 +57,9 @@ export function ClubPage() {
   const [mSeats, setMSeats] = useState(6);
   const [mRake, setMRake] = useState(5);
   const [mCap, setMCap] = useState(3);
+  // Unión (5D)
+  const [uName, setUName] = useState('');
+  const [uCode, setUCode] = useState('');
   // Crear torneo
   const [tName, setTName] = useState('');
   const [tMax, setTMax] = useState(9);
@@ -119,6 +122,42 @@ export function ClubPage() {
     try { await api.delete(`/clubs/${id}/members/${pid}`); toast.success('Miembro expulsado'); load(); }
     catch (e) { toast.error(e.response?.data?.error || 'Error'); }
   }
+  async function approve(pid) {
+    try { await api.post(`/clubs/${id}/members/${pid}/approve`); toast.success('Solicitud aceptada'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error'); }
+  }
+  async function reject(pid) {
+    try { await api.delete(`/clubs/${id}/members/${pid}`); toast.success('Solicitud rechazada'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error'); }
+  }
+  async function changeJoinMode(mode) {
+    try { await api.patch(`/clubs/${id}`, { joinMode: mode }); toast.success(mode === 'approval' ? 'Ahora los ingresos requieren tu aprobación' : 'Ahora el ingreso es directo con el ID'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error'); }
+  }
+  async function createUnion() {
+    try {
+      const { data } = await api.post('/clubs/unions', { name: uName });
+      toast.success(`¡Unión "${data.name}" creada! Código: ${data.unionCode}`, { duration: 9000 });
+      setUName(''); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo crear la unión'); }
+  }
+  async function joinUnionByCode() {
+    const code = uCode.trim().toUpperCase();
+    if (!code) return;
+    try {
+      const { data } = await api.post('/clubs/unions/join', { code });
+      toast.success(`Tu club ahora es parte de la unión "${data.name}"`);
+      setUCode(''); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Código de unión no válido'); }
+  }
+  async function leaveUnion() {
+    try { await api.post('/clubs/unions/leave'); toast.success('Tu club salió de la unión'); load(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Error'); }
+  }
+  function copyUnionCode() {
+    navigator.clipboard?.writeText(club.union.code);
+    toast.success(`Código de unión ${club.union.code} copiado — pásalo a otros dueños de club`);
+  }
   async function createTable() {
     try {
       const { data } = await api.post(`/clubs/${id}/tables`, {
@@ -150,9 +189,11 @@ export function ClubPage() {
   }
   if (!club) return <div className="min-h-screen bg-gray-950 text-green-200 flex items-center justify-center animate-pulse">♣ Cargando club...</div>;
 
+  const pendingCount = club.pendingRequests?.length || 0;
   const TABS = [
     { k: 'partidas', label: '🃏 Partidas' },
-    { k: 'miembros', label: `👥 Miembros (${club.members.length})` },
+    { k: 'miembros', label: `👥 Miembros (${club.members.length})${pendingCount ? ` · ⏳${pendingCount}` : ''}` },
+    { k: 'union', label: club.union ? `🤝 ${club.union.name}` : '🤝 Unión' },
     ...(club.isOwner ? [{ k: 'crear', label: '➕ Crear' }] : []),
   ];
 
@@ -289,6 +330,34 @@ export function ClubPage() {
         {/* ── MIEMBROS ── */}
         {tab === 'miembros' && (
           <div className="space-y-2 max-w-lg">
+            {club.isOwner && (
+              <div className="flex items-center gap-2 bg-gray-900/70 border border-gray-800 rounded-xl px-3 py-2 text-xs mb-4 flex-wrap">
+                <span className="text-gray-400 font-bold">Ingreso al club:</span>
+                <button onClick={() => changeJoinMode('open')}
+                  className={`px-3 py-1 rounded-lg font-bold ${club.joinMode === 'open' ? 'bg-green-800 text-green-200' : 'bg-gray-800 text-gray-500 hover:text-white'}`}>
+                  Directo con el ID
+                </button>
+                <button onClick={() => changeJoinMode('approval')}
+                  className={`px-3 py-1 rounded-lg font-bold ${club.joinMode === 'approval' ? 'bg-yellow-800 text-yellow-200' : 'bg-gray-800 text-gray-500 hover:text-white'}`}>
+                  Con mi aprobación
+                </button>
+              </div>
+            )}
+
+            {club.isOwner && pendingCount > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-yellow-300 mb-2">⏳ Solicitudes de ingreso ({pendingCount})</h3>
+                {club.pendingRequests.map(m => (
+                  <div key={m.player_id} className="flex items-center gap-3 bg-yellow-950/40 border border-yellow-800/50 rounded-xl px-3 py-2 mb-2">
+                    <Avatar nickname={m.nickname} avatarConfig={typeof m.avatar_config === 'string' ? JSON.parse(m.avatar_config || 'null') : m.avatar_config} size={34} />
+                    <div className="min-w-0 flex-1 font-bold text-sm truncate">{m.nickname}</div>
+                    <button onClick={() => approve(m.player_id)} className="text-xs bg-green-800 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold">Aceptar</button>
+                    <button onClick={() => reject(m.player_id)} className="text-xs bg-red-900/70 hover:bg-red-800 px-3 py-1.5 rounded-lg">Rechazar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {club.members.map(m => (
               <div key={m.player_id} className="flex items-center gap-3 bg-gray-900/70 border border-gray-800 rounded-xl px-3 py-2">
                 <Avatar nickname={m.nickname} avatarConfig={typeof m.avatar_config === 'string' ? JSON.parse(m.avatar_config || 'null') : m.avatar_config} size={34} />
@@ -302,6 +371,131 @@ export function ClubPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* ── UNIÓN (Fase 5D): clubes aliados comparten partidas ── */}
+        {tab === 'union' && !club.union && (
+          <div className="max-w-lg space-y-4">
+            <p className="text-sm text-gray-400">
+              Una <b>unión</b> alía varios clubes: los miembros de cualquier club de la unión
+              pueden jugar las mesas y torneos de los demás. Ideal para juntar más jugadores.
+            </p>
+            {club.isOwner ? (
+              <>
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+                  <h2 className="font-bold">🤝 Crear una unión</h2>
+                  <p className="text-[11px] text-gray-500">Tu club queda como fundador y recibes un código para invitar a otros clubes.</p>
+                  <div className="flex gap-2">
+                    <Input value={uName} onChange={e => setUName(e.target.value)} placeholder="Nombre de la unión" maxLength={40} />
+                    <Button onClick={createUnion} className="font-bold shrink-0">Crear</Button>
+                  </div>
+                </div>
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+                  <h2 className="font-bold">🔗 Unir mi club a una unión</h2>
+                  <p className="text-[11px] text-gray-500">Pide el código al dueño del club fundador.</p>
+                  <div className="flex gap-2">
+                    <Input value={uCode} onChange={e => setUCode(e.target.value.toUpperCase())} placeholder="CÓDIGO DE UNIÓN" maxLength={8} className="font-mono tracking-widest" />
+                    <Button onClick={joinUnionByCode} className="font-bold shrink-0">Unirme</Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Este club aún no pertenece a ninguna unión. Solo el dueño puede unirlo a una.</p>
+            )}
+          </div>
+        )}
+
+        {tab === 'union' && club.union && (
+          <>
+            <div className="flex items-center gap-4 flex-wrap mb-5">
+              <div>
+                <h2 className="font-black text-lg">🤝 {club.union.name}</h2>
+                <button onClick={copyUnionCode} className="text-sm text-purple-300 hover:text-purple-100 font-mono" title="Copiar código">
+                  Código de la unión: <span className="font-bold tracking-widest">{club.union.code}</span> 📋
+                </button>
+              </div>
+              {club.isOwner && !club.union.isFounder && (
+                <button onClick={leaveUnion} className="ml-auto text-xs bg-red-900/70 hover:bg-red-800 px-3 py-1.5 rounded-lg">Salir de la unión</button>
+              )}
+            </div>
+
+            <h3 className="text-sm font-bold text-gray-400 mb-2">Clubes de la unión</h3>
+            <div className="flex gap-3 flex-wrap mb-8">
+              {club.union.clubs.map(c => (
+                <div key={c.id} className={`flex items-center gap-2 rounded-xl px-4 py-2 border ${c.id === club.id ? 'bg-purple-950/60 border-purple-700/50' : 'bg-gray-900/70 border-gray-800'}`}>
+                  <span className="text-2xl">{c.emblem}</span>
+                  <span>
+                    <span className="block font-bold text-sm">{c.name}{c.id === club.id ? ' (este club)' : ''}</span>
+                    <span className="block text-[11px] text-gray-500">
+                      {c.id === club.union.founderClubId ? '⭐ Fundador · ' : ''}{c.members} 👥
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <h3 className="font-bold mb-3">🏆 Torneos de clubes aliados</h3>
+            {club.unionTournaments.length === 0 && <p className="text-sm text-gray-500 mb-6">Ninguno activo ahora.</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+              {club.unionTournaments.map(t => {
+                const mine = !!t.am_registered;
+                const eliminated = mine && t.my_final_position !== null;
+                const playing = mine && t.my_final_position === null;
+                const running = t.status === 'running';
+                const full = t.registered >= t.max_players;
+                return (
+                  <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-yellow-800/40">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-bold">{t.name}</h3>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                        {running ? 'En curso' : `${t.registered}/${t.max_players}`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-purple-300 mb-1">{t.club_emblem} {t.club_name}</div>
+                    <div className="text-sm text-gray-300 mb-2">
+                      Entrada: <span className="text-white font-mono">{Math.round(t.buy_in)}{Number(t.fee) > 0 ? `+${Math.round(t.fee)}` : ''}</span>
+                      <span className="mx-2">·</span>
+                      Bote: <span className="text-yellow-400 font-mono">{Math.round(t.prize_pool)}</span>
+                    </div>
+                    {running && playing ? (
+                      <button onClick={() => enterTournament(t.id)} className="w-full bg-green-700 hover:bg-green-600 font-bold py-2 rounded-xl text-sm">▶ Entrar</button>
+                    ) : running && (eliminated || !mine) && t.late_reg_open ? (
+                      <button onClick={() => joinTournament(t.id)} className="w-full bg-purple-700 hover:bg-purple-600 font-bold py-2 rounded-xl text-sm">
+                        {eliminated ? '🔄 Re-entrar' : '🕐 Tardía'} ({Math.round(t.buy_in) + Math.round(t.fee)})
+                      </button>
+                    ) : running ? (
+                      <button disabled className="w-full bg-gray-700 opacity-40 font-bold py-2 rounded-xl text-sm">{eliminated ? `Eliminado (${t.my_final_position}º)` : 'En curso'}</button>
+                    ) : (
+                      <button onClick={() => joinTournament(t.id)} disabled={full || mine}
+                        className="w-full bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 font-bold py-2 rounded-xl text-sm">
+                        {mine ? 'Inscrito ✓' : full ? 'Completo' : `Inscribirme (${Math.round(t.buy_in) + Math.round(t.fee)})`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <h3 className="font-bold mb-3">💵 Mesas cash de clubes aliados</h3>
+            {club.unionTables.length === 0 && <p className="text-sm text-gray-500">Ninguna activa ahora.</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {club.unionTables.map(t => (
+                <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-green-800/40">
+                  <div className="flex justify-between items-start mb-1">
+                    <h3 className="font-bold">{t.name}</h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
+                  </div>
+                  <div className="text-[11px] text-purple-300 mb-1">{t.club_emblem} {t.club_name}</div>
+                  <div className="text-sm text-gray-300 mb-3">
+                    Ciegas <span className="text-white font-mono">{Math.round(t.small_blind)}/{Math.round(t.big_blind)}</span>
+                    {Number(t.rake_pct) > 0 && <><span className="mx-2">·</span>💼 rake {Number(t.rake_pct)}% (máx {t.rake_cap_bb}BB)</>}
+                  </div>
+                  <button onClick={() => { setBuyInModal(t); setBuyIn(String(t.buy_in_min)); }}
+                    className="w-full bg-green-700 hover:bg-green-600 font-bold py-2 rounded-xl text-sm">Sentarme</button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {/* ── CREAR (solo dueño) ── */}

@@ -3,7 +3,7 @@ import { useSocket } from '../context/SocketContext';
 
 let _animId = 0;
 
-export function useTableState(tableId, buyIn) {
+export function useTableState(tableId, buyIn, watch = false) {
   const { socket } = useSocket();
   const [tableState, setTableState] = useState(null);
   const [myCards, setMyCards] = useState([]);
@@ -66,7 +66,7 @@ export function useTableState(tableId, buyIn) {
     s.on('error', (err) => {
       console.error('[useTableState] server error:', JSON.stringify(err));
       // Join-blocking errors get surfaced to the UI
-      if (['ANTI_RATHOLING', 'INVALID_BUYIN', 'INSUFFICIENT_CHIPS', 'TABLE_FULL'].includes(err.code)) {
+      if (['ANTI_RATHOLING', 'INVALID_BUYIN', 'INSUFFICIENT_CHIPS', 'TABLE_FULL', 'NOT_CLUB_MEMBER'].includes(err.code)) {
         setJoinError(err);
       }
     });
@@ -174,8 +174,10 @@ export function useTableState(tableId, buyIn) {
 
     // Server-side join is idempotent (re-seats just resync state),
     // so we re-emit on every (re)connect to rejoin rooms and refetch cards.
+    // Modo espectador (watch): solo mira — nunca se sienta ni paga buy-in.
     function doJoin() {
-      s.emit('join_table', { tableId, buyIn: parseFloat(buyIn) || 500 });
+      if (watch) s.emit('watch_table', { tableId });
+      else s.emit('join_table', { tableId, buyIn: parseFloat(buyIn) || 500 });
     }
     if (s.connected) doJoin();
     s.on('connect', doJoin);
@@ -186,7 +188,7 @@ export function useTableState(tableId, buyIn) {
        'action_broadcast','pot_updated','hand_ended','player_joined','player_left',
        'reaction_received','chat_received','cards_revealed','runout_started'].forEach(ev => s.off(ev));
     };
-  }, [tableId, socket]);
+  }, [tableId, socket, watch]);
 
   function sendAction(type, amount) {
     socket.current?.emit('game_action', { tableId, type, amount });
@@ -201,7 +203,7 @@ export function useTableState(tableId, buyIn) {
   }
 
   function leaveTable() {
-    socket.current?.emit('leave_table', { tableId });
+    socket.current?.emit(watch ? 'unwatch_table' : 'leave_table', { tableId });
   }
 
   function clearLastWinner() { setLastWinner(null); }

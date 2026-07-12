@@ -174,9 +174,48 @@ async function setupDb() {
       INDEX idx_player (player_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+    // Modo de ingreso al club: directo (open) o con aprobación del dueño
+    try {
+      await conn.query(`ALTER TABLE clubs ADD COLUMN join_mode ENUM('open','approval') NOT NULL DEFAULT 'open'`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
+    // Solicitudes pendientes conviven con los miembros (status)
+    try {
+      await conn.query(`ALTER TABLE club_members ADD COLUMN status ENUM('pending','active') NOT NULL DEFAULT 'active'`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
+    // ── UNIONES (Fase 5D): clubes aliados comparten el lobby de partidas ──
+    await conn.query(`CREATE TABLE IF NOT EXISTS unions (
+      id            CHAR(36)    NOT NULL,
+      union_code    VARCHAR(8)  NOT NULL UNIQUE,
+      name          VARCHAR(40) NOT NULL,
+      owner_club_id CHAR(36)    NOT NULL,
+      created_at    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Un club pertenece a lo sumo a una unión
+    try {
+      await conn.query(`ALTER TABLE clubs ADD COLUMN union_id CHAR(36) NULL, ADD INDEX idx_union (union_id)`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
     // Mesas de club: comisión (rake) configurable por el dueño
     try {
       await conn.query(`ALTER TABLE tables_cash ADD COLUMN club_id CHAR(36) NULL, ADD COLUMN rake_pct DECIMAL(4,2) NOT NULL DEFAULT 0, ADD COLUMN rake_cap_bb INT NOT NULL DEFAULT 0, ADD INDEX idx_club (club_id)`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
+    // Snapshot de los stacks de las mesas cash (el estado vive en RAM). Permite
+    // reembolsar las fichas en juego si el proceso reinicia, en vez de perderlas.
+    try {
+      await conn.query(`ALTER TABLE tables_cash ADD COLUMN runtime_json LONGTEXT NULL`);
     } catch (e) {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
@@ -198,6 +237,58 @@ async function setupDb() {
       FOREIGN KEY (bot_id) REFERENCES players(id),
       INDEX idx_level (level)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Debido proceso: motivo de baneo, apelación y última interacción humana.
+    for (const col of [
+      "ADD COLUMN ban_reason VARCHAR(200) NULL",
+      "ADD COLUMN appeal_text VARCHAR(500) NULL",
+      "ADD COLUMN appealed_at DATETIME NULL",
+      "ADD COLUMN last_interaction DATETIME NULL",
+    ]) {
+      try { await conn.query(`ALTER TABLE players ${col}`); }
+      catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') throw e; }
+    }
+
+    // Bitácora de moderación: TODA acción (banear/desbanear/marcar) queda
+    // trazada — quién, cuándo, por qué, con qué score. Sostiene la sanción y
+    // la apelación (nada de sanciones sin evidencia).
+    await conn.query(`CREATE TABLE IF NOT EXISTS moderation_actions (
+      id          BIGINT       NOT NULL AUTO_INCREMENT,
+      player_id   CHAR(36)     NOT NULL,
+      action      ENUM('ban','unban','flag','note') NOT NULL,
+      reason      VARCHAR(300) NULL,
+      score_at    SMALLINT     NULL,
+      by_admin    CHAR(36)     NULL,
+      at          DATETIME     NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (id),
+      FOREIGN KEY (player_id) REFERENCES players(id),
+      INDEX idx_player (player_id),
+      INDEX idx_action (action)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Vigilancia anti-trampas: cada conexión de un humano deja rastro de
+    // IP y dispositivo. Con esto se detecta multicuenta (misma IP/dispositivo,
+    // varias cuentas) y colusión (dos cuentas de la misma casa en una mesa).
+    await conn.query(`CREATE TABLE IF NOT EXISTS login_events (
+      id          BIGINT       NOT NULL AUTO_INCREMENT,
+      player_id   CHAR(36)     NOT NULL,
+      ip          VARCHAR(45)  NOT NULL,
+      user_agent  VARCHAR(255) NULL,
+      fingerprint VARCHAR(64)  NULL,
+      at          DATETIME     NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (id),
+      FOREIGN KEY (player_id) REFERENCES players(id),
+      INDEX idx_player (player_id),
+      INDEX idx_ip (ip),
+      INDEX idx_fp (fingerprint)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Migración para bases ya existentes con login_events sin fingerprint
+    try {
+      await conn.query(`ALTER TABLE login_events ADD COLUMN fingerprint VARCHAR(64) NULL, ADD INDEX idx_fp (fingerprint)`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
 
     // Etiquetas de los testers: qué nivel le adivinan a cada jugador/bot
     await conn.query(`CREATE TABLE IF NOT EXISTS tester_labels (

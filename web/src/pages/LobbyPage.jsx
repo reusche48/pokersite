@@ -7,6 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { notify, canAskNotifications, askNotifications } from '../lib/notify';
 import { Avatar } from '../components/table/Avatar';
+import { TournamentStandings } from '../components/table/TournamentStandings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -191,6 +192,11 @@ export function LobbyPage() {
     if (!code) return;
     try {
       const { data } = await api.post('/clubs/join', { code });
+      if (data.pending) {
+        toast.info(`Solicitud enviada a ${data.name} — espera la aprobación del dueño`, { duration: 8000 });
+        setClubCode(''); fetchClubs();
+        return;
+      }
       toast.success(`¡Bienvenido a ${data.name}!`);
       navigate(`/club/${data.clubId}`);
     } catch (e) { toast.error(e.response?.data?.error || 'ID de club no válido'); }
@@ -375,12 +381,35 @@ export function LobbyPage() {
                     )}
                     {!countdown && !(running && t.late_reg_open && !playing) && <div className="mb-3" />}
                     {btn}
+                    {/* Torneo en curso: cualquiera (incluso eliminado) puede ver
+                        la clasificación y desde ahí mirar las mesas en vivo (👁) */}
+                    {running && (
+                      <div className="mt-2 text-center text-sm">
+                        <TournamentStandings tournamentId={t.id} myId={player?.id} />
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         )}
+
+        {/* Pruebas de mesa (beta) */}
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => navigate('/demo25d')}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-800/60 to-rose-800/60 hover:from-red-700/60 hover:to-rose-700/60 border border-red-700/50 text-red-50 font-bold py-2.5 rounded-xl transition-colors"
+          >
+            🎨 Mesa 2.5D <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">BETA</span>
+          </button>
+          <button
+            onClick={() => navigate('/demo3d')}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-800/60 to-indigo-800/60 hover:from-purple-700/60 hover:to-indigo-700/60 border border-purple-700/50 text-purple-100 font-bold py-2.5 rounded-xl transition-colors"
+          >
+            🎬 Mesa 3D <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">BETA</span>
+          </button>
+        </div>
 
         {/* Aviso de notificaciones (una sola vez) */}
         {showNotifBtn && (
@@ -402,12 +431,19 @@ export function LobbyPage() {
           {myClubs.length > 0 && (
             <div className="flex gap-3 flex-wrap mb-4">
               {myClubs.map(c => (
-                <button key={c.id} onClick={() => navigate(`/club/${c.id}`)}
-                  className="flex items-center gap-2 bg-purple-950/60 hover:bg-purple-900/70 border border-purple-700/50 rounded-xl px-4 py-2 transition-colors">
+                <button key={c.id}
+                  onClick={() => c.status === 'pending'
+                    ? toast.info('Tu solicitud sigue pendiente — espera la aprobación del dueño')
+                    : navigate(`/club/${c.id}`)}
+                  className={`flex items-center gap-2 border rounded-xl px-4 py-2 transition-colors ${c.status === 'pending'
+                    ? 'bg-gray-900/60 border-gray-700 opacity-70 cursor-default'
+                    : 'bg-purple-950/60 hover:bg-purple-900/70 border-purple-700/50'}`}>
                   <span className="text-2xl">{c.emblem}</span>
                   <span className="text-left">
                     <span className="block font-bold text-sm">{c.name}</span>
-                    <span className="block text-[11px] text-gray-400">{c.role === 'owner' ? '👑 Tu club' : 'Miembro'} · {c.members} 👥 · ID {c.club_code}</span>
+                    <span className="block text-[11px] text-gray-400">
+                      {c.status === 'pending' ? '⏳ Solicitud pendiente' : c.role === 'owner' ? '👑 Tu club' : 'Miembro'} · {c.members} 👥 · ID {c.club_code}
+                    </span>
                   </span>
                 </button>
               ))}

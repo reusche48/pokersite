@@ -1,5 +1,8 @@
 const router = require('express').Router();
-const { createClub, joinClub, myClubs, getClub, kickMember, leaveClub } = require('../controllers/clubsController');
+const {
+  createClub, joinClub, myClubs, getClub, kickMember, leaveClub,
+  approveMember, updateClub, createUnion, joinUnion, leaveUnion,
+} = require('../controllers/clubsController');
 const { createClubTable } = require('../controllers/tablesController');
 const { createClubTournament, fillClubBots } = require('../controllers/tournamentsController');
 const { seatClubBots } = require('../controllers/adminController');
@@ -7,12 +10,19 @@ const { authMiddleware } = require('../middleware/auth');
 
 router.use(authMiddleware);
 
+// Uniones (Fase 5D) — rutas fijas antes de '/:id'
+router.post('/unions', createUnion);
+router.post('/unions/join', joinUnion);
+router.post('/unions/leave', leaveUnion);
+
 // Clubes
 router.post('/', createClub);
 router.post('/join', joinClub);
 router.get('/mine', myClubs);
 router.get('/:id', getClub);
+router.patch('/:id', updateClub);
 router.delete('/:id/members/:pid', kickMember);
+router.post('/:id/members/:pid/approve', approveMember);
 router.post('/:id/leave', leaveClub);
 
 // Partidas del club (permisos de dueño se validan en cada handler)
