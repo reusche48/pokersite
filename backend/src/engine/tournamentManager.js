@@ -47,10 +47,21 @@ function defaultPayout(n) {
 
 // ── Arrancar un torneo (registering → running) ──
 async function startTournament(tournamentId) {
+  // Reclamar el arranque de forma ATÓMICA: solo un llamador gana la transición
+  // registering→running. Sin esto, autostart-por-cupo, autostart-por-bots y el
+  // arranque programado pueden solaparse y duplicar mesas/bots/timers dejando
+  // runtime huérfano con ciegas dobles.
+  const [claim] = await pool.query(
+    'UPDATE tournaments SET status = "running", started_at = NOW() WHERE id = ? AND status = "registering"',
+    [tournamentId]
+  );
+  if (!claim.affectedRows) {
+    const [[exists]] = await pool.query('SELECT status FROM tournaments WHERE id = ?', [tournamentId]);
+    if (!exists) throw new Error('Torneo no encontrado');
+    return; // ya lo arrancó (o cerró) otro llamador
+  }
   const [rows] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tournamentId]);
-  if (!rows.length) throw new Error('Torneo no encontrado');
   const t = rows[0];
-  if (t.status !== 'registering') throw new Error('El torneo no está en inscripción');
 
   const [regs] = await pool.query(
     `SELECT r.player_id, p.nickname, p.is_bot, b.level, b.personality_json
@@ -60,7 +71,11 @@ async function startTournament(tournamentId) {
      WHERE r.tournament_id = ?`,
     [tournamentId]
   );
-  if (regs.length < 2) throw new Error('Se necesitan al menos 2 inscritos');
+  if (regs.length < 2) {
+    // Revertir el claim para permitir un arranque válido más adelante
+    await pool.query('UPDATE tournaments SET status = "registering", started_at = NULL WHERE id = ?', [tournamentId]);
+    throw new Error('Se necesitan al menos 2 inscritos');
+  }
 
   const schedule = jparse(t.blind_schedule_json, DEFAULT_BLINDS);
   const lvl0 = schedule[0] || DEFAULT_BLINDS[0];
@@ -130,7 +145,7 @@ async function startTournament(tournamentId) {
   updateTournamentInfo(rt);
   snapshotTournament(tournamentId); // snapshot inicial (por si se reinicia enseguida)
 
-  await pool.query('UPDATE tournaments SET status = "running", started_at = NOW() WHERE id = ?', [tournamentId]);
+  // (status ya se marcó 'running' al reclamar el arranque, arriba)
   for (const tid of tableIds) {
     emitToTable(tid, 'chat_received', {
       playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
@@ -490,28 +505,51 @@ async function onHandComplete(tournamentId, completedTableId) {
 async function finalize(tournamentId) {
   const rt = runtime.get(tournamentId);
   if (!rt) return;
+  // Idempotencia en el mismo proceso: no reentrar (p.ej. dos onHandComplete).
+  if (rt.finalizing) return;
+  rt.finalizing = true;
   const chipCol = rt.chipMode === 'real' ? 'real_chips' : 'play_chips';
   const [[tRow]] = await pool.query('SELECT name FROM tournaments WHERE id = ?', [tournamentId]);
 
-  for (const [playerId, position] of Object.entries(rt.positions)) {
-    const frac = rt.payout[position] || 0;
-    // Bounty: el campeón cobra también su propia recompensa (estilo KO)
-    const ownBounty = (Number(position) === 1 && rt.bounty > 0) ? Math.round(rt.bounty) : 0;
-    const prize = Math.round(rt.prizePool * frac) + ownBounty;
-    await pool.query(
-      'UPDATE tournament_registrations SET final_position = ?, prize_won = ? WHERE tournament_id = ? AND player_id = ?',
-      [position, prize, tournamentId, playerId]
-    );
-    if (prize > 0) {
-      await pool.query(`UPDATE players SET ${chipCol} = ${chipCol} + ? WHERE id = ?`, [prize, playerId]);
-      await pool.query(
-        `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'tournament_prize', ?)`,
-        [playerId, rt.chipMode, prize, tournamentId]
+  // Todos los pagos + el cierre en UNA transacción, con idempotencia dura: si el
+  // torneo ya está 'finished' (p.ej. un resume tras crash volvió a llamar aquí),
+  // se aborta sin re-pagar. Antes esto eran statements sueltos en autocommit:
+  // un crash a mitad dejaba unos cobrados y otros no, y el status en 'running'
+  // permitía un doble pago al reanudar.
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[t]] = await conn.query('SELECT status FROM tournaments WHERE id = ? FOR UPDATE', [tournamentId]);
+    if (!t || t.status === 'finished') { await conn.rollback(); return; }
+
+    for (const [playerId, position] of Object.entries(rt.positions)) {
+      const frac = rt.payout[position] || 0;
+      // Bounty: el campeón cobra también su propia recompensa (estilo KO)
+      const ownBounty = (Number(position) === 1 && rt.bounty > 0) ? Math.round(rt.bounty) : 0;
+      const prize = Math.round(rt.prizePool * frac) + ownBounty;
+      await conn.query(
+        'UPDATE tournament_registrations SET final_position = ?, prize_won = ? WHERE tournament_id = ? AND player_id = ?',
+        [position, prize, tournamentId, playerId]
       );
+      if (prize > 0) {
+        await conn.query(`UPDATE players SET ${chipCol} = ${chipCol} + ? WHERE id = ?`, [prize, playerId]);
+        await conn.query(
+          `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'tournament_prize', ?)`,
+          [playerId, rt.chipMode, prize, tournamentId]
+        );
+      }
     }
+    await conn.query('UPDATE tournaments SET status = "finished", ended_at = NOW(), runtime_json = NULL WHERE id = ?', [tournamentId]);
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    rt.finalizing = false; // permitir reintento si falló antes de commitear
+    console.error('[torneo finalize]', tournamentId, e.message);
+    throw e;
+  } finally {
+    conn.release();
   }
 
-  await pool.query('UPDATE tournaments SET status = "finished", ended_at = NOW(), runtime_json = NULL WHERE id = ?', [tournamentId]);
   for (const tid of rt.tableIds) {
     emitToTable(tid, 'torneo_finalizado', { tournamentId, name: tRow?.name, positions: rt.positions });
   }

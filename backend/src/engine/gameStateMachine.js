@@ -538,10 +538,18 @@ function runShowdown(table, earlyEnd = false) {
   // Regla estándar "sin flop no hay comisión". Se descuenta proporcionalmente
   // de los premios (los side pots ya están resueltos por potManager).
   if (table.clubId && table.rakePct > 0 && !table.isTournament && table.community.length >= 3) {
+    // Base rakeable = solo los botes DISPUTADOS (≥2 elegibles). Un bote de un
+    // solo elegible es una apuesta no igualada (uncalled bet) que se devuelve al
+    // apostador y NO se rakea (regla estándar). Antes se rakeaba sobre el total
+    // repartido, incluyendo esas devoluciones.
+    const rakeBase = table.potManager.getPotsSnapshot()
+      .filter(p => p.eligiblePlayerIds.length >= 2)
+      .reduce((s, p) => s + p.amount, 0);
     const totalAwarded = Object.values(awards).reduce((a, b) => a + b, 0);
-    if (totalAwarded > 0) {
-      let rake = Math.round(totalAwarded * (table.rakePct / 100));
+    if (rakeBase > 0 && totalAwarded > 0) {
+      let rake = Math.round(rakeBase * (table.rakePct / 100));
       if (table.rakeCapBB > 0) rake = Math.min(rake, table.rakeCapBB * table.bigBlind);
+      rake = Math.min(rake, totalAwarded); // nunca descontar más de lo repartido
       if (rake > 0) {
         let restante = rake;
         const ids = Object.keys(awards);
@@ -553,13 +561,31 @@ function runShowdown(table, earlyEnd = false) {
           restante -= parte;
         });
         table.handLogger.log(null, 'rake', rake, 0);
-        // Persistencia async: caja del club + auditoría
-        pool.query('UPDATE clubs SET treasury = treasury + ? WHERE id = ?', [rake, table.clubId])
-          .catch(e => console.error('[rake]', e.message));
-        pool.query(
-          `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, 'play', ?, 'rake', ?)`,
-          [table.seats.find(s => s.playerId)?.playerId || null, -rake, table.clubId]
-        ).catch(() => {});
+        // Caja del club + auditoría en UNA transacción (antes eran dos queries
+        // fire-and-forget: si fallaban, el rake salía del ganador pero no entraba
+        // a la caja). Se atribuye al ganador principal (rankedPlayers[0]), que
+        // pagó el grueso del rake de su premio — antes se usaba el PRIMER asiento
+        // ocupado, que podía no haber ganado nada. El reference_id apunta al club.
+        const rakePayer = rankedPlayers[0]?.playerId || ids[0];
+        const rakeClubId = table.clubId;
+        const rakeChipMode = table.chipMode;
+        (async () => {
+          const conn = await pool.getConnection();
+          try {
+            await conn.beginTransaction();
+            await conn.query('UPDATE clubs SET treasury = treasury + ? WHERE id = ?', [rake, rakeClubId]);
+            await conn.query(
+              `INSERT INTO chip_transactions (player_id, chip_mode, delta, reason, reference_id) VALUES (?, ?, ?, 'rake', ?)`,
+              [rakePayer, rakeChipMode, -rake, rakeClubId]
+            );
+            await conn.commit();
+          } catch (e) {
+            await conn.rollback();
+            console.error('[rake] persistencia falló:', rakeClubId, e.message);
+          } finally {
+            conn.release();
+          }
+        })();
         emitToTable(table.id, 'chat_received', {
           playerId: null, nickname: 'Dealer', type: 'dealer', at: new Date().toISOString(),
           text: `💼 Comisión del club: ${rake}`,
@@ -722,7 +748,12 @@ function handlePlayerExit(table, playerId) {
   const seat = table.seats.find(s => s.playerId === playerId);
   if (!seat) return false;
 
-  const inActiveHand = table.phase !== 'waiting' && ['active', 'all_in'].includes(seat.status);
+  // Un jugador ALL-IN ya puso todas sus fichas: su mano debe jugarse hasta el
+  // showdown aunque abandone. Foldearlo/quitarlo dejaría su parte del bote sin
+  // dueño (side pot huérfano) y destruiría fichas. No se toca.
+  if (seat.status === 'all_in') return false;
+
+  const inActiveHand = table.phase !== 'waiting' && seat.status === 'active';
   if (!inActiveHand) return false;
 
   const wasTheirTurn = table.actionPosition === seat.position;

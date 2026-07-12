@@ -270,6 +270,15 @@ module.exports = function registerTableHandlers(socket, io) {
       return;
     }
 
+    // All-in en una mano en curso: su parte del bote debe repartirse en el
+    // showdown. No se le quita el asiento (eso dejaría un side pot huérfano);
+    // solo sale de la sala. Tras la mano quedará como asiento normal.
+    const mySeat = tm.getPlayerSeat(table, player.id);
+    if (mySeat && mySeat.status === 'all_in' && table.phase !== 'waiting') {
+      socket.leave(`table:${tableId}`);
+      return;
+    }
+
     const stack = tm.standPlayer(table, player.id);
     if (stack === null) return;
 

@@ -80,8 +80,12 @@ class PotManager {
   awardPots(rankedPlayers) {
     const awards = {};
     for (const pot of this.pots) {
-      const eligible = rankedPlayers.filter(p => pot.eligiblePlayerIds.has(p.playerId));
-      if (!eligible.length) continue;
+      let eligible = rankedPlayers.filter(p => pot.eligiblePlayerIds.has(p.playerId));
+      // Nunca descartar un bote: si ningún elegible sigue en la mano (p.ej. se
+      // retiraron o abandonaron todos los que podían ganarlo), se adjudica al
+      // mejor jugador restante en la mano para NO destruir fichas.
+      if (!eligible.length) eligible = rankedPlayers;
+      if (!eligible.length) continue; // nadie en la mano — imposible en un showdown
       const best = eligible[0].hand;
       const tiedWinners = eligible.filter(p => p.hand && best && compareHands(p.hand, best) === 0);
       if (!tiedWinners.length) tiedWinners.push(eligible[0]);
