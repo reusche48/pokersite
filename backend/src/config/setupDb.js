@@ -302,6 +302,50 @@ async function setupDb() {
       INDEX idx_target (target_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+    // ── Tabla puente hand_players: pertenencia (y neto) por mano. Permite
+    // consultar el historial/stats de un jugador con un JOIN indexado en vez de
+    // un JSON_SEARCH sobre players_json (full-scan que no escala con las manos).
+    await conn.query(`CREATE TABLE IF NOT EXISTS hand_players (
+      hand_id   BIGINT   NOT NULL,
+      player_id CHAR(36) NOT NULL,
+      net       INT      NOT NULL DEFAULT 0,
+      PRIMARY KEY (hand_id, player_id),
+      INDEX idx_player (player_id),
+      FOREIGN KEY (hand_id)   REFERENCES hand_history(id) ON DELETE CASCADE,
+      FOREIGN KEY (player_id) REFERENCES players(id)      ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+    // Backfill único desde players_json (histórico). net=0 en las manos viejas;
+    // las nuevas guardan el neto real. Solo corre si la tabla está vacía.
+    const [[hp]] = await conn.query('SELECT COUNT(*) n FROM hand_players');
+    if (hp.n === 0) {
+      const [[hh]] = await conn.query('SELECT COUNT(*) n FROM hand_history');
+      if (hh.n > 0) {
+        console.log(`[DB] Backfill hand_players desde ${hh.n} manos…`);
+        let last = 0, done = 0;
+        for (;;) {
+          const [rows] = await conn.query(
+            'SELECT id, players_json FROM hand_history WHERE id > ? ORDER BY id LIMIT 500', [last]
+          );
+          if (!rows.length) break;
+          const values = [];
+          for (const r of rows) {
+            last = r.id;
+            let players = [];
+            try { players = typeof r.players_json === 'string' ? JSON.parse(r.players_json) : (r.players_json || []); } catch {}
+            const seen = new Set();
+            for (const p of players) {
+              if (p && p.playerId && !seen.has(p.playerId)) { seen.add(p.playerId); values.push([r.id, p.playerId, 0]); }
+            }
+          }
+          // INSERT IGNORE: salta filas con FK inválida (jugadores ya borrados)
+          if (values.length) await conn.query('INSERT IGNORE INTO hand_players (hand_id, player_id, net) VALUES ?', [values]);
+          done += rows.length;
+        }
+        console.log(`[DB] Backfill hand_players completo (${done} manos).`);
+      }
+    }
+
     console.log('[DB] Schema created/verified');
   } finally {
     conn.release();

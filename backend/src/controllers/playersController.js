@@ -17,11 +17,11 @@ async function getHistory(req, res) {
   const limit = 20;
   const offset = (page - 1) * limit;
   const [rows] = await pool.query(
-    `SELECT id, table_id, tournament_id, hand_number, game_type, chip_mode,
-            pot_total, winners_json, started_at, ended_at
-     FROM hand_history
-     WHERE JSON_SEARCH(players_json, 'one', ?, NULL, '$[*].playerId') IS NOT NULL
-     ORDER BY ended_at DESC LIMIT ? OFFSET ?`,
+    `SELECT hh.id, hh.table_id, hh.tournament_id, hh.hand_number, hh.game_type, hh.chip_mode,
+            hh.pot_total, hh.winners_json, hh.started_at, hh.ended_at
+     FROM hand_history hh
+     JOIN hand_players hp ON hp.hand_id = hh.id AND hp.player_id = ?
+     ORDER BY hh.ended_at DESC LIMIT ? OFFSET ?`,
     [req.player.id, limit, offset]
   );
   res.json(rows);
@@ -66,10 +66,10 @@ async function updateAvatar(req, res) {
 async function getStats(req, res) {
   const pid = req.player.id;
   const [rows] = await pool.query(
-    `SELECT actions_json, winners_json, ended_at
-     FROM hand_history
-     WHERE JSON_SEARCH(players_json, 'one', ?, NULL, '$[*].playerId') IS NOT NULL
-     ORDER BY ended_at DESC LIMIT 500`,
+    `SELECT hh.actions_json, hh.winners_json, hh.ended_at
+     FROM hand_history hh
+     JOIN hand_players hp ON hp.hand_id = hh.id AND hp.player_id = ?
+     ORDER BY hh.ended_at DESC LIMIT 500`,
     [pid]
   );
   const jp = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
@@ -130,9 +130,9 @@ async function getStats(req, res) {
 async function getAchievements(req, res) {
   const pid = req.player.id;
   const [rows] = await pool.query(
-    `SELECT winners_json, pot_total FROM hand_history
-     WHERE JSON_SEARCH(players_json, 'one', ?, NULL, '$[*].playerId') IS NOT NULL
-     ORDER BY ended_at DESC LIMIT 2000`,
+    `SELECT hh.winners_json, hh.pot_total FROM hand_history hh
+     JOIN hand_players hp ON hp.hand_id = hh.id AND hp.player_id = ?
+     ORDER BY hh.ended_at DESC LIMIT 2000`,
     [pid]
   );
   const jp = v => { try { return typeof v === 'string' ? JSON.parse(v) : (v || []); } catch { return []; } };
