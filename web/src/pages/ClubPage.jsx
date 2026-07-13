@@ -172,7 +172,11 @@ export function ClubPage() {
     try {
       await api.post(`/clubs/${id}/tournaments`, {
         name: tName || 'Torneo del club', maxPlayers: tMax, buyIn: tBuyIn, fee: tFee,
-        bounty: tBounty, blindSchedule: SPEEDS[tSpeed]?.schedule || null, startsAt: tStart || null,
+        bounty: tBounty, blindSchedule: SPEEDS[tSpeed]?.schedule || null,
+        // Convertir la hora local del input a ISO UTC en el navegador (que sabe
+        // la zona del usuario). Sin esto, el servidor interpreta la hora en SU
+        // zona (Railway = UTC) y el inicio queda descuadrado.
+        startsAt: tStart ? new Date(tStart).toISOString() : null,
       });
       toast.success(tStart ? 'Torneo programado' : 'Torneo creado');
       setTab('partidas'); load();

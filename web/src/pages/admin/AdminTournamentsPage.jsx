@@ -83,7 +83,9 @@ export function AdminTournamentsPage() {
         name: values.name, maxPlayers: values.maxPlayers, buyIn: values.buyIn,
         bounty: values.bounty || 0, addedPrize: values.addedPrize || 0,
         blindSchedule: SPEEDS[values.speed]?.schedule || null,
-        startsAt: startAt || null,
+        // Hora local del input → ISO UTC en el navegador, para que el servidor
+        // (Railway = UTC) no la interprete en otra zona y descuadre el inicio.
+        startsAt: startAt ? new Date(startAt).toISOString() : null,
       });
       toast.success(startAt ? 'Torneo programado' : 'Torneo creado');
       setStartAt('');
