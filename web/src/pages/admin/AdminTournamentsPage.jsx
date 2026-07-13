@@ -64,6 +64,7 @@ export function AdminTournamentsPage() {
   const [botLevel, setBotLevel] = useState(7);
   const [botCount, setBotCount] = useState(6);
   const [startAt, setStartAt] = useState(''); // inicio programado (opcional)
+  const [shareLink, setShareLink] = useState(''); // enlace del "campeonato con amigos"
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(torneoSchema),
@@ -89,6 +90,24 @@ export function AdminTournamentsPage() {
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear torneo'); }
   }
+  // "Campeonato con amigos": 1 clic → crea torneo de 30, arranca en 15 min, y da
+  // un enlace para compartir. Los amigos se inscriben y los bots rellenan al empezar.
+  async function quickFriends() {
+    try {
+      const startsAt = new Date(Date.now() + 15 * 60000).toISOString();
+      const { data } = await api.post('/tournaments', {
+        name: 'Campeonato con amigos',
+        maxPlayers: 30, buyIn: 100,
+        blindSchedule: SPEEDS.turbo.schedule,
+        startsAt,
+      });
+      const link = `${window.location.origin}/?torneo=${data.id}`;
+      setShareLink(link);
+      try { await navigator.clipboard?.writeText(link); toast.success('¡Campeonato creado! Enlace copiado — compártelo con tus amigos'); }
+      catch { toast.success('¡Campeonato creado! Copia el enlace de abajo'); }
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al crear el campeonato'); }
+  }
   async function fill(id) {
     try {
       const { data } = await api.post(`/tournaments/${id}/bots`, { level: botLevel, count: botCount });
@@ -106,6 +125,25 @@ export function AdminTournamentsPage() {
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold mb-1">🏆 Torneos Sit&Go</h1>
         <p className="text-sm text-gray-400 mb-6">Crea un campeonato, rellénalo con bots y arranca. Los testers se inscriben desde el lobby.</p>
+
+        {/* Atajo: Campeonato con amigos (1 clic) */}
+        <div className="bg-gradient-to-r from-yellow-900/50 to-amber-800/40 border border-yellow-700/50 rounded-xl p-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1">
+              <h2 className="font-bold">🎉 Campeonato con amigos (1 clic)</h2>
+              <p className="text-xs text-gray-400 mt-1">Crea un torneo de 30 que arranca en 15 min. Comparte el enlace: tus amigos se inscriben y los bots rellenan los huecos al empezar.</p>
+            </div>
+            <button onClick={quickFriends} className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-5 py-3 rounded-xl whitespace-nowrap">Crear y obtener enlace</button>
+          </div>
+          {shareLink && (
+            <div className="mt-3 flex items-center gap-2 bg-black/40 rounded-lg p-2">
+              <input readOnly value={shareLink} onFocus={e => e.target.select()}
+                className="flex-1 bg-transparent text-sm text-yellow-100 outline-none min-w-0" />
+              <button onClick={() => { navigator.clipboard?.writeText(shareLink); toast.success('Enlace copiado'); }}
+                className="text-xs bg-yellow-700 hover:bg-yellow-600 px-3 py-1.5 rounded-lg font-bold whitespace-nowrap">Copiar</button>
+            </div>
+          )}
+        </div>
 
         {/* Crear — react-hook-form + Zod con errores inline */}
         <form onSubmit={handleSubmit(create)} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 space-y-3">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -118,6 +118,8 @@ function MenuItem({ children, onClick, danger }) {
 export function LobbyPage() {
   const { player, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const invitedId = searchParams.get('torneo'); // enlace de invitación: /?torneo=<id>
   const { connect, socket } = useSocket();
   const [tables, setTables] = useState([]);
   const [tournaments, setTournaments] = useState([]);
@@ -319,6 +321,41 @@ export function LobbyPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Invitación por enlace: /?torneo=<id>. Banner destacado para inscribirse
+            de un toque si el torneo sigue abierto y aún no estás inscrito. */}
+        {(() => {
+          const inv = invitedId && tournaments.find(t => t.id === invitedId && t.status === 'registering' && !t.am_registered);
+          if (!inv) return null;
+          let countdown = null;
+          if (inv.starts_at) {
+            const diff = new Date(inv.starts_at).getTime() - nowTick;
+            countdown = diff > 0 ? `${Math.floor(diff / 60000)}m ${String(Math.floor((diff % 60000) / 1000)).padStart(2, '0')}s` : 'por comenzar…';
+          }
+          return (
+            <div className="mb-8 bg-gradient-to-r from-yellow-900/60 to-amber-800/50 border border-yellow-600/60 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
+                <div className="text-yellow-200 text-sm font-bold uppercase tracking-wide">🎉 Te invitaron a un campeonato</div>
+                <div className="text-xl font-black text-white mt-1">{inv.name}</div>
+                <div className="text-sm text-yellow-100/80 mt-1">
+                  {inv.registered}/{inv.max_players} inscritos · buy-in {Math.round(inv.buy_in)}
+                  {countdown && <> · 🕐 empieza en {countdown} (los bots rellenan los huecos)</>}
+                </div>
+              </div>
+              {player ? (
+                <button onClick={() => joinTournament(inv.id)}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-6 py-3 rounded-xl whitespace-nowrap">
+                  Inscribirme ({Math.round(inv.buy_in)})
+                </button>
+              ) : (
+                <button onClick={() => setShowAuth(true)}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black font-black px-6 py-3 rounded-xl whitespace-nowrap">
+                  Entrar para inscribirme
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Torneos */}
         {tournaments.length > 0 && (
           <div className="mb-8">
