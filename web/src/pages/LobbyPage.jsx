@@ -395,9 +395,25 @@ export function LobbyPage() {
           </div>
         )}
 
-        {/* Demos de mesa 3D/2.5D (BETA): retiradas del lobby — el bucle de
-            render continuo de three.js recalienta el celular. Las rutas
-            /demo3d y /demo25d siguen existiendo para pruebas de escritorio. */}
+        {/* Demos de mesa 3D/2.5D (BETA): SOLO en escritorio. El bucle de render
+            continuo de three.js recalienta los celulares, así que en móvil no
+            se muestran (ni deberían usarse). */}
+        {!isMobile && (
+          <div className="mb-6 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => navigate('/demo25d')}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-800/60 to-rose-800/60 hover:from-red-700/60 hover:to-rose-700/60 border border-red-700/50 text-red-50 font-bold py-2.5 rounded-xl transition-colors"
+            >
+              🎨 Mesa 2.5D <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">BETA</span>
+            </button>
+            <button
+              onClick={() => navigate('/demo3d')}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-800/60 to-indigo-800/60 hover:from-purple-700/60 hover:to-indigo-700/60 border border-purple-700/50 text-purple-100 font-bold py-2.5 rounded-xl transition-colors"
+            >
+              🎬 Mesa 3D <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">BETA</span>
+            </button>
+          </div>
+        )}
 
         {/* Aviso de notificaciones (una sola vez) */}
         {showNotifBtn && (

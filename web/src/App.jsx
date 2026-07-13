@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RequireAdmin } from './components/common/RequireAdmin';
+import { DesktopOnly } from './components/common/DesktopOnly';
 import { LobbyPage } from './pages/LobbyPage';
 import { TablePage } from './pages/TablePage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -38,14 +39,14 @@ export default function App() {
             <Route path="/club/:id" element={<ClubPage />} />
             <Route path="/replay/:id" element={<HandReplayPage />} />
             <Route path="/demo3d" element={
-              <Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa 3D…</div>}>
+              <DesktopOnly><Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa 3D…</div>}>
                 <Table3DDemoPage />
-              </Suspense>
+              </Suspense></DesktopOnly>
             } />
             <Route path="/demo25d" element={
-              <Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa…</div>}>
+              <DesktopOnly><Suspense fallback={<div className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-400">Cargando mesa…</div>}>
                 <Table25DDemoPage />
-              </Suspense>
+              </Suspense></DesktopOnly>
             } />
             <Route path="/replay/shared/:token" element={<HandReplayPage shared />} />
             <Route path="/admin" element={<RequireAdmin><AdminDashboardPage /></RequireAdmin>} />
