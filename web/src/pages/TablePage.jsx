@@ -24,10 +24,28 @@ export function TablePage() {
   useEffect(() => {
     const s = socket?.current;
     if (!s) return;
+    // Timer para volver al lobby si esta mesa (de torneo) se cierra y a mí NO me
+    // mueven (soy espectador o quedé eliminado). Si me mueven, se cancela.
+    let closeTimer = null;
     const onMove = ({ tableId }) => {
+      if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       if (tableId && tableId !== id) navigate(`/table/${tableId}?buyIn=1500`);
     };
     const onEnd = () => { setTimeout(() => navigate('/'), 9000); };
+    // La mesa se cerró al formar la mesa final. A los jugadores activos ya los
+    // mueve onMove (que cancela este timer); los que solo miraban vuelven al lobby.
+    const onTableClosed = () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        toast('La mesa se cerró al formar la mesa final.');
+        navigate('/');
+      }, 700);
+    };
+    // Reconectar a una mesa que ya no existe (rota al formar la mesa final) →
+    // volver al lobby en vez de quedarse en "Conectando…" para siempre.
+    const onErr = (err) => {
+      if (err?.code === 'TABLE_NOT_FOUND') { toast('Esa mesa ya no está disponible.'); navigate('/'); }
+    };
     // ¡Mesa final! Aviso destacado + sonido de suspenso (latido) cuando el
     // torneo colapsa a una sola mesa.
     const onFinalTable = ({ players }) => {
@@ -40,7 +58,13 @@ export function TablePage() {
     s.on('torneo_mesa_cambiada', onMove);
     s.on('torneo_finalizado', onEnd);
     s.on('torneo_mesa_final', onFinalTable);
-    return () => { s.off('torneo_mesa_cambiada', onMove); s.off('torneo_finalizado', onEnd); s.off('torneo_mesa_final', onFinalTable); };
+    s.on('torneo_mesa_cerrada', onTableClosed);
+    s.on('error', onErr);
+    return () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      s.off('torneo_mesa_cambiada', onMove); s.off('torneo_finalizado', onEnd);
+      s.off('torneo_mesa_final', onFinalTable); s.off('torneo_mesa_cerrada', onTableClosed); s.off('error', onErr);
+    };
   }, [socket, id, connected]);
 
   if (!player) return null;

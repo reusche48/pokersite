@@ -351,6 +351,11 @@ function removeTournamentTable(rt, id) {
   const table = tm.getTable(id);
   if (table) table.tournamentOver = true;
   rt.tableIds = rt.tableIds.filter(t => t !== id);
+  console.log(`[Torneo] mesa cerrada ${id.slice(0, 8)} — emitiendo torneo_mesa_cerrada`);
+  // Avisar a quienes SIGUEN en la sala de esta mesa (espectadores y eliminados
+  // que estaban mirando): la mesa se cerró para formar/consolidar la mesa final.
+  // Los jugadores activos ya fueron movidos antes con 'torneo_mesa_cambiada'.
+  emitToTable(id, 'torneo_mesa_cerrada', { tournamentId: rt.id });
   tm.removeTable(id);
 }
 
