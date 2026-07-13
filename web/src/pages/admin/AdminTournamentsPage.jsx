@@ -121,6 +121,19 @@ export function AdminTournamentsPage() {
     try { await api.post(`/tournaments/${id}/start`); toast.success('Torneo iniciado'); load(); }
     catch (e) { toast.error(e.response?.data?.error || 'Error al iniciar'); }
   }
+  // Cancelar: elimina el torneo del lobby y REEMBOLSA a todos los inscritos
+  // (buy-in + fee) de una sola vez. Solo torneos en inscripción.
+  async function cancel(t) {
+    const msg = t.registered > 0
+      ? `¿Cancelar "${t.name}"? Se reembolsará el buy-in a los ${t.registered} inscrito(s).`
+      : `¿Cancelar "${t.name}"?`;
+    if (!window.confirm(msg)) return;
+    try {
+      const { data } = await api.post(`/tournaments/${t.id}/cancel`);
+      toast.success(data.refunded > 0 ? `Torneo cancelado — ${data.refunded} reembolso(s)` : 'Torneo cancelado');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo cancelar'); }
+  }
 
   return (
     <AdminNav>
@@ -242,6 +255,7 @@ export function AdminTournamentsPage() {
                   <div className="flex gap-2">
                     <button onClick={() => fill(t.id)} className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg">+ Bots nivel {botLevel}</button>
                     <button onClick={() => start(t.id)} className="text-xs bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg font-bold">Iniciar</button>
+                    <button onClick={() => cancel(t)} className="text-xs bg-red-900/70 hover:bg-red-800 px-3 py-1.5 rounded-lg">Cancelar</button>
                   </div>
                 )}
               </div>
