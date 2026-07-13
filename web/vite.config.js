@@ -40,5 +40,9 @@ export default defineConfig({
     }),
   ],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
-  server: { proxy: { '/api': 'http://localhost:4000', '/socket.io': { target: 'http://localhost:4000', ws: true } } },
+  server: {
+    host: true,          // expone el dev server en la red local (para probar desde el celular)
+    allowedHosts: true,  // acepta la conexión por IP de la LAN
+    proxy: { '/api': 'http://localhost:4000', '/socket.io': { target: 'http://localhost:4000', ws: true } },
+  },
 })

@@ -36,7 +36,17 @@ DB_NAME=${{MySQL.MYSQLDATABASE}}
 JWT_SECRET=<genera-uno-nuevo-largo-y-aleatorio>
 ADMIN_EMAIL=tu-correo@ejemplo.com
 ADMIN_PASSWORD=<una-contraseña-fuerte>
+NODE_ENV=production
+APP_URL=https://<tu-app>.up.railway.app
 ```
+
+Opcionales:
+- `TRUST_PROXY_HOPS` — nº de proxies delante (Railway = **1**, que ya es el valor
+  por defecto; solo cámbialo si tu topología es distinta). Hace que la IP del
+  cliente sea real y no falsificable (anti-multicuenta).
+- `ALLOWED_ORIGINS` — lista blanca de CORS. Como el frontend se sirve del mismo
+  dominio, puedes dejarlo vacío.
+- `APP_URL` — la URL pública; se usa en los enlaces de recuperación de contraseña.
 
 - `ASSETLINKS_JSON` (opcional): solo si empaquetas la app como **APK** (ver
   `GET_THE_APP.md`). Pega aquí el contenido del `assetlinks.json` que da PWABuilder para
@@ -53,8 +63,9 @@ ADMIN_PASSWORD=<una-contraseña-fuerte>
 ### 4. Primer arranque — TODO automático ✅
 Al desplegar, el backend **se auto-provisiona** (idempotente, solo si falta):
 - Crea el **esquema** de la base (`[DB] Schema created/verified`).
-- Crea el **admin** con `ADMIN_EMAIL` / `ADMIN_PASSWORD` (si no defines
-  `ADMIN_PASSWORD`, usa `admin123` y avisa por consola — **defínela**).
+- Crea el **admin** con `ADMIN_EMAIL` / `ADMIN_PASSWORD`. **Define
+  `ADMIN_PASSWORD`**: si no, se genera una contraseña **aleatoria de un solo uso**
+  y se muestra en los logs (ya no se usa `admin123`).
 - Siembra los **100 bots**.
 - Crea una **Mesa Principal**.
 
@@ -69,6 +80,14 @@ Abre la URL pública que da Railway. El frontend, la API y los sockets viven en 
 mismo dominio, así que todo conecta sin configuración extra.
 
 ## Notas
-- Los **bots viven en memoria**: si el servicio se reinicia, el admin los vuelve a
-  sentar desde el panel (o por API). Los torneos en curso también se pierden al reiniciar.
-- Reglas de negocio (comisión 20%, etc.) están en el backend; revisa `CLAUDE.md`.
+- **Migraciones automáticas:** el esquema (incluidas tablas y columnas nuevas —
+  clubes/uniones, `hand_players`, `password_resets`, `token_version`, snapshots,
+  índices) se crea/migra solo al arrancar (`setupDb`, idempotente). No hay que
+  correr nada a mano.
+- **Persistencia ante reinicios:** los **torneos en curso se rehidratan** y las
+  **mesas cash reembolsan** los stacks al saldo (no se pierden fichas en un
+  deploy). Los **bots** se re-siembran; el admin puede resentarlos si hace falta.
+- **Build:** `railway.json` fija el builder a **Nixpacks** (`npm run build` +
+  `npm start`) y usa `/health` como healthcheck. El `Dockerfile` de la raíz es
+  solo para correr en Docker localmente, no lo usa Railway.
+- Reglas de negocio (comisión, etc.) están en el backend; revisa `CLAUDE.md`.
