@@ -410,6 +410,19 @@ function rebalance(rt) {
       movePlayer(rt, max.players[0], max.table, min.table);
     }
   }
+
+  // ── Aviso de MESA FINAL: al colapsar de varias mesas a una sola, se avisa a
+  // los jugadores de esa mesa (una sola vez) para el banner + sonido de suspenso.
+  const aliveNow = aliveTables(rt);
+  if (aliveNow.length === 1 && !rt.finalTableAnnounced) {
+    rt.finalTableAnnounced = true;
+    console.log(`[Torneo] "${rt.name}" llegó a MESA FINAL (${aliveNow[0].players.length} jugadores)`);
+    emitToTable(aliveNow[0].id, 'torneo_mesa_final', {
+      tournamentId: rt.id,
+      name: rt.name,
+      players: aliveNow[0].players.length,
+    });
+  }
 }
 
 // ── Subida de ciegas global ──
