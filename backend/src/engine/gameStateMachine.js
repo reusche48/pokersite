@@ -7,6 +7,7 @@ const { validateAction } = require('./actionValidator');
 const HandLogger = require('./handLogger');
 const { bestHand, compareHands } = require('./variants/holdem/handEvaluator');
 const { snapshotCashTable } = require('./cashPersistence');
+const tm = require('./tableManager');
 
 const ACTION_TIMEOUT_MS = 30_000;
 const TIME_BANK_SECONDS = 30; // banco de tiempo extra por jugador (una vez por mesa)
@@ -106,6 +107,7 @@ function startHand(table) {
   // guard un segundo timer REINICIARÍA una mano en curso, creando un nuevo
   // PotManager y destruyendo el bote ya descontado de los stacks.
   if (table.phase !== 'waiting') return;
+  table.progressAt = Date.now(); // latido para el watchdog
   // Anyone seated with chips plays the next hand (including players who
   // joined mid-hand and were waiting as sitting_out)
   const readySeats = table.seats.filter(s => s.playerId && s.status !== 'empty' && s.stack > 0);
@@ -219,6 +221,7 @@ function startHand(table) {
 
 function scheduleAction(table) {
   clearTimeout(table.actionTimeout);
+  table.progressAt = Date.now(); // latido: la mano avanzó (turno o paso de run-out)
 
   // If at most one player can still act (everyone else is all-in) and that
   // player owes nothing, betting is over — run out the remaining streets
@@ -502,9 +505,21 @@ function endStreet(table, earlyEnd = false) {
   scheduleAction(table);
 }
 
+// Envoltura: si el showdown lanza una excepción (rake, evaluador, bust, DB…),
+// NO dejar la mesa colgada — forzar el cierre de la mano y seguir.
 function runShowdown(table, earlyEnd = false) {
+  try {
+    _runShowdown(table, earlyEnd);
+  } catch (e) {
+    console.error('[runShowdown] error — forzando cierre en', table.id, e.message, e.stack);
+    forceCompleteHand(table);
+  }
+}
+
+function _runShowdown(table, earlyEnd = false) {
   clearTimeout(table.actionTimeout);
   table.actionTimeout = null;
+  table.progressAt = Date.now(); // latido: empezó el showdown
   table.phase = 'showdown';
 
   const inHand = table.seats.filter(s => s.playerId && ['active', 'all_in'].includes(s.status));
@@ -793,4 +808,53 @@ function handlePlayerExit(table, playerId) {
   return true;
 }
 
-module.exports = { startHand, processAction, setIo, getIo, publicTableState, handlePlayerExit, emitToTable, emitToPlayer };
+// Cierra una mano forzosamente y reactiva la mesa (recuperación de un cuelgue):
+// deja la fase en 'waiting', descarta el bote actual y agenda la siguiente mano.
+// Se acepta que un bote en curso pueda no repartirse — es preferible a que la
+// mesa quede congelada para siempre (solo ocurre en errores, no en juego normal).
+function forceCompleteHand(table) {
+  clearTimeout(table.actionTimeout);
+  for (const s of table.seats) {
+    if (s.playerId && s.status !== 'empty' && s.status !== 'sitting_out') s.status = 'active';
+  }
+  table.phase = 'waiting';
+  table.actionPosition = null;
+  table.potManager = new PotManager();
+  table.progressAt = Date.now();
+  try { emitToTable(table.id, 'table_state', publicTableState(table)); } catch {}
+  if (table.isTournament && table.onHandComplete) table.onHandComplete(table);
+  else if (!table.isTournament) snapshotCashTable(table);
+  if (!table.tournamentOver) {
+    clearTimeout(table.nextHandTimeout);
+    table.nextHandTimeout = setTimeout(() => startHand(table), 3000);
+  }
+}
+
+// Watchdog: barre las mesas y recupera cualquiera que lleve demasiado tiempo sin
+// avanzar (una mano colgada). Umbral 75s > (30s turno + 30s banco de tiempo), así
+// que no dispara falsos positivos en una decisión legítima lenta.
+function watchdogTick() {
+  const STUCK_MS = 75_000;
+  for (const table of tm.getAllTables()) {
+    if (!table || table.phase === 'waiting') continue;
+    const idle = Date.now() - (table.progressAt || 0);
+    if (idle < STUCK_MS) continue;
+    console.warn(`[watchdog] mesa ${table.id} atascada ${Math.round(idle / 1000)}s en fase '${table.phase}' — recuperando`);
+    try {
+      if (['pre_flop', 'flop', 'turn', 'river'].includes(table.phase)) {
+        // Ronda de apuestas colgada: re-armar la acción (si el jugador no está,
+        // el auto-fold/timeout la resolverá en 30s).
+        clearTimeout(table.actionTimeout);
+        scheduleAction(table);
+      } else {
+        // 'showdown' u otro estado raro (p.ej. runShowdown lanzó): forzar cierre.
+        forceCompleteHand(table);
+      }
+    } catch (e) {
+      console.error('[watchdog] recuperación falló en', table.id, e.message);
+      try { forceCompleteHand(table); } catch {}
+    }
+  }
+}
+
+module.exports = { startHand, processAction, setIo, getIo, publicTableState, handlePlayerExit, emitToTable, emitToPlayer, watchdogTick };

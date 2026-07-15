@@ -124,6 +124,10 @@ setupDb()
     try { require('./src/engine/tournamentManager').resumeTournaments(); } catch (e) { console.error('[Torneos] resume:', e.message); }
     // Reembolsar los stacks de las mesas cash que quedaron en RAM al reiniciar
     try { await require('./src/engine/cashPersistence').resumeCashTables(); } catch (e) { console.error('[Cash] resume:', e.message); }
+    // Watchdog: cada 15s revisa que ninguna mesa quede colgada (mano atascada)
+    // y la reactiva. Red de seguridad ante cualquier cuelgue del motor.
+    const gsm = require('./src/engine/gameStateMachine');
+    setInterval(() => { try { gsm.watchdogTick(); } catch (e) { console.error('[watchdog]', e.message); } }, 15000);
   })
   .catch(err => {
     console.error('[DB] Setup failed:', err);
