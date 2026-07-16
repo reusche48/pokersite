@@ -65,8 +65,10 @@ export function useTableState(tableId, buyIn, watch = false) {
 
     s.on('error', (err) => {
       console.error('[useTableState] server error:', JSON.stringify(err));
-      // Join-blocking errors get surfaced to the UI
-      if (['ANTI_RATHOLING', 'INVALID_BUYIN', 'INSUFFICIENT_CHIPS', 'TABLE_FULL', 'NOT_CLUB_MEMBER'].includes(err.code)) {
+      // Join-blocking errors get surfaced to the UI (incluye TABLE_NOT_FOUND:
+      // la mesa ya no existe — típico al terminar un torneo — para no quedar
+      // colgado en "Conectando a la mesa…" para siempre).
+      if (['ANTI_RATHOLING', 'INVALID_BUYIN', 'INSUFFICIENT_CHIPS', 'TABLE_FULL', 'NOT_CLUB_MEMBER', 'TABLE_NOT_FOUND'].includes(err.code)) {
         setJoinError(err);
       }
     });

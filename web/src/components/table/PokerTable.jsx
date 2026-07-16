@@ -93,15 +93,29 @@ export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
     return () => clearTimeout(t);
   }, [autoFold, actionRequired]);
 
-  // All-in run-out → heartbeat suspense sound + modo cine
+  // All-in run-out → modo cine para todos, pero el latido de suspenso SOLO
+  // suena si YO estoy en la mano (all-in o cubriendo). Si me retiré o solo
+  // miro, no suena — el corazón late por mis fichas, no por las ajenas.
   useEffect(() => {
     const ev = animEvents.find(e => e.type === 'runout');
     if (ev) {
-      play('suspense');
+      const me = tableState?.seats?.find(s => s.playerId === player?.id);
+      const estoyEnLaMano = me && ['all_in', 'active'].includes(me.status);
+      if (estoyEnLaMano) play('suspense');
       setCinema(true);
       consumeAnim(ev.id);
     }
   }, [animEvents]);
+
+  // Red de seguridad: si la mesa no carga en 12 s (p. ej. el torneo terminó y
+  // la mesa ya no existe, o el join se perdió), no dejar al jugador colgado en
+  // "Conectando a la mesa…" — ofrecer volver al lobby.
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  useEffect(() => {
+    if (tableState) { setLoadTimedOut(false); return; }
+    const t = setTimeout(() => setLoadTimedOut(true), 12000);
+    return () => clearTimeout(t);
+  }, [tableState]);
 
   // El modo cine termina cuando se resuelve la mano (o por seguridad a los 12s)
   useEffect(() => {
@@ -150,13 +164,21 @@ export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
   const { containerRefCb, getSeatXY, getBetXY, centerXY, ready } = useSeatCoords(seatToVisual);
 
   if (!tableState) {
-    if (joinError) {
+    // Mesa inexistente (torneo terminado) o timeout de carga → pantalla de salida
+    const gone = joinError?.code === 'TABLE_NOT_FOUND';
+    if (joinError || loadTimedOut) {
       return (
         <div className="flex items-center justify-center h-screen bg-[#0c0812] text-white">
           <div className="bg-gray-900 rounded-2xl p-6 w-[380px] border border-red-800 text-center">
-            <div className="text-4xl mb-3">🚫</div>
-            <h3 className="font-bold text-lg mb-2">No puedes unirte</h3>
-            <p className="text-sm text-gray-300 mb-5">{joinError.message || 'Error al unirse a la mesa'}</p>
+            <div className="text-4xl mb-3">{gone || loadTimedOut ? '🏁' : '🚫'}</div>
+            <h3 className="font-bold text-lg mb-2">
+              {gone || loadTimedOut ? 'Esta mesa ya no está disponible' : 'No puedes unirte'}
+            </h3>
+            <p className="text-sm text-gray-300 mb-5">
+              {gone || loadTimedOut
+                ? 'Puede que el torneo haya terminado o la mesa se haya cerrado.'
+                : (joinError?.message || 'Error al unirse a la mesa')}
+            </p>
             <button
               onClick={() => navigate('/')}
               className="bg-green-700 hover:bg-green-600 text-white font-bold px-6 py-2 rounded-lg"
@@ -172,6 +194,11 @@ export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
         <div className="text-center">
           <div className="text-5xl mb-4 animate-pulse">♠</div>
           Conectando a la mesa...
+          <div className="mt-6">
+            <button onClick={() => navigate('/')} className="text-sm text-gray-400 hover:text-white underline">
+              Volver al lobby
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -52,22 +52,23 @@ export function ClubPage() {
   const [botCount, setBotCount] = useState(3);
   // Candado anti doble-clic: ignora clics repetidos mientras se crea algo
   const [creating, setCreating] = useState(false);
-  // Crear mesa
+  // Crear mesa (los numéricos se guardan como TEXTO para no pegar ceros
+  // sobrantes ni impedir vaciarlos; se convierten a número al enviar)
   const [mName, setMName] = useState('');
-  const [mSB, setMSB] = useState(5);
-  const [mBB, setMBB] = useState(10);
+  const [mSB, setMSB] = useState('5');
+  const [mBB, setMBB] = useState('10');
   const [mSeats, setMSeats] = useState(6);
-  const [mRake, setMRake] = useState(5);
-  const [mCap, setMCap] = useState(3);
+  const [mRake, setMRake] = useState('5');
+  const [mCap, setMCap] = useState('3');
   // Unión (5D)
   const [uName, setUName] = useState('');
   const [uCode, setUCode] = useState('');
   // Crear torneo
   const [tName, setTName] = useState('');
-  const [tMax, setTMax] = useState(9);
-  const [tBuyIn, setTBuyIn] = useState(100);
-  const [tFee, setTFee] = useState(10);
-  const [tBounty, setTBounty] = useState(0);
+  const [tMax, setTMax] = useState('9');
+  const [tBuyIn, setTBuyIn] = useState('100');
+  const [tFee, setTFee] = useState('10');
+  const [tBounty, setTBounty] = useState('0');
   const [tSpeed, setTSpeed] = useState('turbo');
   const [tStart, setTStart] = useState('');
 
@@ -559,9 +560,9 @@ export function ClubPage() {
                 <Input value={mName} onChange={e => setMName(e.target.value)} placeholder="Mesa del club" /></div>
               <div className="flex gap-2">
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Ciega chica</Label>
-                  <Input type="number" value={mSB} onChange={e => setMSB(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" value={mSB} onChange={e => setMSB(e.target.value)} /></div>
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Ciega grande</Label>
-                  <Input type="number" value={mBB} onChange={e => setMBB(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" value={mBB} onChange={e => setMBB(e.target.value)} /></div>
                 <div className="w-24"><Label className="text-[10px] text-gray-500">Asientos</Label>
                   <select value={mSeats} onChange={e => setMSeats(Number(e.target.value))} className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-2 text-sm">
                     {[2, 4, 6, 9].map(n => <option key={n} value={n}>{n}</option>)}
@@ -569,9 +570,9 @@ export function ClubPage() {
               </div>
               <div className="flex gap-2">
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Comisión (rake) % — 0 a 10</Label>
-                  <Input type="number" min={0} max={10} value={mRake} onChange={e => setMRake(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={0} max={10} value={mRake} onChange={e => setMRake(e.target.value)} /></div>
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Tope en ciegas grandes — 0 a 5</Label>
-                  <Input type="number" min={0} max={5} value={mCap} onChange={e => setMCap(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={0} max={5} value={mCap} onChange={e => setMCap(e.target.value)} /></div>
               </div>
               <p className="text-[11px] text-gray-500">La comisión se cobra de cada bote (solo si hubo flop) y va a la caja del club.</p>
               <Button onClick={createTable} disabled={creating} className="w-full font-bold">{creating ? 'Creando…' : 'Crear mesa'}</Button>
@@ -583,22 +584,30 @@ export function ClubPage() {
                 <Input value={tName} onChange={e => setTName(e.target.value)} placeholder="Torneo del club" /></div>
               <div className="flex gap-2">
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Jugadores (2–30)</Label>
-                  <Input type="number" min={2} max={30} value={tMax} onChange={e => setTMax(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={2} max={30} value={tMax} onChange={e => setTMax(e.target.value)} /></div>
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Buy-in</Label>
-                  <Input type="number" min={0} value={tBuyIn} onChange={e => setTBuyIn(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={0} value={tBuyIn} onChange={e => setTBuyIn(e.target.value)} /></div>
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Comisión (fee)</Label>
-                  <Input type="number" min={0} value={tFee} onChange={e => setTFee(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={0} value={tFee} onChange={e => setTFee(e.target.value)} /></div>
               </div>
               <div className="flex gap-2">
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Bounty por cabeza</Label>
-                  <Input type="number" min={0} value={tBounty} onChange={e => setTBounty(Number(e.target.value))} /></div>
+                  <Input type="number" inputMode="numeric" min={0} value={tBounty} onChange={e => setTBounty(e.target.value)} /></div>
                 <div className="flex-1"><Label className="text-[10px] text-gray-500">Velocidad</Label>
                   <select value={tSpeed} onChange={e => setTSpeed(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-md px-2 py-2 text-sm">
                     {Object.entries(SPEEDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select></div>
               </div>
-              <div><Label className="text-[10px] text-gray-500">Inicio programado (opcional)</Label>
-                <Input type="datetime-local" value={tStart} onChange={e => setTStart(e.target.value)} /></div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-gray-500">Inicio programado (opcional)</Label>
+                  {tStart && (
+                    <button type="button" onClick={() => setTStart('')} className="text-[10px] text-red-400 hover:text-red-300 font-semibold">✕ Quitar hora</button>
+                  )}
+                </div>
+                <Input type="datetime-local" value={tStart} onChange={e => setTStart(e.target.value)} />
+                <p className="text-[10px] text-gray-600 mt-1">Sin hora: arranca al llenarse (o con el botón ⚡).</p>
+              </div>
               <p className="text-[11px] text-gray-500">La entrada es "buy-in + fee": el buy-in va al pozo de premios y el fee a la caja del club.</p>
               <Button onClick={createTournament} disabled={creating} className="w-full font-bold">{creating ? 'Creando…' : 'Crear torneo'}</Button>
             </div>

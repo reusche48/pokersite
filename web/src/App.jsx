@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RequireAdmin } from './components/common/RequireAdmin';
 import { DesktopOnly } from './components/common/DesktopOnly';
@@ -29,6 +30,7 @@ export default function App() {
     <AuthProvider>
       <SocketProvider>
         <Toaster theme="dark" position="top-center" richColors closeButton />
+        <PwaUpdatePrompt />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LobbyPage />} />

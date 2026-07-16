@@ -9,7 +9,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': cuando hay versión nueva, avisamos al usuario ("toca para
+      // actualizar") en vez de servir la vieja en silencio. Lo maneja
+      // PwaUpdatePrompt con el hook useRegisterSW.
+      registerType: 'prompt',
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'PokerSite',
