@@ -127,6 +127,17 @@ export function AdminBotsPage() {
       loadActive();
     } catch { toast.error('Error al retirar bots'); }
   }
+  async function deleteTable() {
+    const t = tables.find(x => x.id === tableId);
+    if (!t) return;
+    if (!window.confirm(`¿Eliminar la mesa "${t.name}"? Solo se puede si está vacía.`)) return;
+    try {
+      await api.delete(`/admin/tables/${tableId}`);
+      toast.success('Mesa eliminada');
+      setTableId('');
+      loadTables();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar la mesa'); }
+  }
 
   const atTable = active.filter(b => b.tableId === tableId);
 
@@ -164,7 +175,8 @@ export function AdminBotsPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={seat} className="flex-1 bg-green-700 hover:bg-green-600 font-bold py-2 rounded-lg">Sentar bots</button>
-            <button onClick={unseatTable} className="bg-red-900 hover:bg-red-800 px-4 py-2 rounded-lg text-sm">Retirar todos de esta mesa</button>
+            <button onClick={unseatTable} className="bg-red-900 hover:bg-red-800 px-4 py-2 rounded-lg text-sm">Retirar bots</button>
+            <button onClick={deleteTable} title="Eliminar esta mesa (si está vacía)" className="bg-red-950 hover:bg-red-900 text-red-300 px-4 py-2 rounded-lg text-sm">🗑 Eliminar mesa</button>
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, banPlayer, securityReport, trainModel } = require('../controllers/adminController');
+const { adminDeleteTable } = require('../controllers/tablesController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
 // Todo el router es solo-admin
@@ -13,5 +14,6 @@ router.get('/labels/accuracy', labelAccuracy);
 router.post('/players/:id/ban', banPlayer);
 router.get('/security', securityReport);
 router.post('/ml/train', trainModel);
+router.delete('/tables/:id', adminDeleteTable);
 
 module.exports = router;

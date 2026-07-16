@@ -136,4 +136,41 @@ async function createClubTable(req, res) {
   res.status(201).json({ id, name: tableName, clubId, smallBlind: sb, bigBlind: bb, rakePct: rake, rakeCapBB: cap, buyInMin, buyInMax });
 }
 
-module.exports = { listTables, getTable, createTable, createPrivateTable, getByCode, createClubTable };
+// Cierra (soft-delete) una mesa cash: la oculta del lobby/club y la saca de
+// memoria. Solo si NO hay nadie sentado — nunca rompe una partida en curso.
+// Es soft-delete (status='closed') para no tocar el historial de manos.
+async function closeTableById(tableId) {
+  const [[t]] = await pool.query('SELECT id, status FROM tables_cash WHERE id = ?', [tableId]);
+  if (!t) return { http: 404, msg: 'Mesa no encontrada' };
+  const live = tm.getTable(tableId);
+  if (live) {
+    const seated = live.seats.filter(s => s.playerId).length;
+    if (seated > 0) return { http: 400, msg: `No se puede eliminar: hay ${seated} jugador(es) sentado(s)` };
+    if (live.tournamentId) return { http: 400, msg: 'Es una mesa de un torneo activo' };
+    tm.removeTable(tableId);
+  }
+  await pool.query("UPDATE tables_cash SET status = 'closed' WHERE id = ?", [tableId]);
+  return { ok: true };
+}
+
+// DELETE /admin/tables/:id  (admin) → eliminar mesa del lobby
+async function adminDeleteTable(req, res) {
+  const r = await closeTableById(req.params.id);
+  if (r.http) return res.status(r.http).json({ error: r.msg });
+  res.json({ ok: true });
+}
+
+// DELETE /clubs/:id/tables/:tableId  (dueño del club) → eliminar su mesa
+async function deleteClubTable(req, res) {
+  const { isClubOwner } = require('./clubsController');
+  if (!(await isClubOwner(req.params.id, req.player.id))) {
+    return res.status(403).json({ error: 'Solo el dueño del club puede eliminar mesas' });
+  }
+  const [[t]] = await pool.query('SELECT club_id FROM tables_cash WHERE id = ?', [req.params.tableId]);
+  if (!t || t.club_id !== req.params.id) return res.status(404).json({ error: 'Esa mesa no es de este club' });
+  const r = await closeTableById(req.params.tableId);
+  if (r.http) return res.status(r.http).json({ error: r.msg });
+  res.json({ ok: true });
+}
+
+module.exports = { listTables, getTable, createTable, createPrivateTable, getByCode, createClubTable, adminDeleteTable, deleteClubTable };

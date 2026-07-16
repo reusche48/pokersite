@@ -129,6 +129,7 @@ export function LobbyPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now()); // reloj para cuentas regresivas
   const [joinCode, setJoinCode] = useState(''); // código de mesa privada
+  const [busyAction, setBusyAction] = useState(false); // candado anti doble-clic
   const [myClubs, setMyClubs] = useState([]);
   const [clubCode, setClubCode] = useState('');
   const [newClubName, setNewClubName] = useState('');
@@ -222,12 +223,15 @@ export function LobbyPage() {
 
   // ── Home games: mesa privada con código ──
   async function createPrivateTable() {
+    if (busyAction) return;             // ignora doble-clic mientras crea
+    setBusyAction(true);
     try {
       const { data } = await api.post('/tables/private', {});
       toast.success(`Mesa privada creada — código: ${data.inviteCode}`, { duration: 10000 });
       navigate(`/table/${data.id}?buyIn=${data.buyInMin}`);
     } catch (e) {
       toast.error(e.response?.data?.error || 'No se pudo crear la mesa');
+      setBusyAction(false);            // en éxito navegamos fuera; en error, reabrir
     }
   }
 
@@ -239,6 +243,21 @@ export function LobbyPage() {
       navigate(`/table/${data.id}?buyIn=${data.buy_in_min}`);
     } catch (e) {
       toast.error(e.response?.data?.error || 'Código no válido');
+    }
+  }
+
+  // Relleno rápido (admin, pruebas): me inscribe, llena con bots y arranca
+  async function quickFillTournament(id) {
+    if (busyAction) return;             // ignora doble-clic
+    setBusyAction(true);
+    try {
+      const { data } = await api.post(`/tournaments/${id}/quickfill`);
+      toast.success('⚡ Torneo lleno con bots y arrancado — entrando...');
+      if (data.tableId) navigate(`/table/${data.tableId}?buyIn=1500`);
+      else { fetchTournaments(); setBusyAction(false); }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo hacer el relleno rápido');
+      setBusyAction(false);
     }
   }
 
@@ -418,6 +437,17 @@ export function LobbyPage() {
                     )}
                     {!countdown && !(running && t.late_reg_open && !playing) && <div className="mb-3" />}
                     {btn}
+                    {/* Relleno rápido (admin, pruebas): llena con bots y arranca */}
+                    {isAdmin && !running && (
+                      <button
+                        onClick={() => quickFillTournament(t.id)}
+                        disabled={busyAction}
+                        className="w-full mt-2 bg-fuchsia-800/70 hover:bg-fuchsia-700 disabled:opacity-50 text-fuchsia-100 font-bold py-2 rounded-xl transition-colors text-sm"
+                        title="Te inscribe, llena la mesa con bots aleatorios y arranca el torneo (para pruebas)"
+                      >
+                        {busyAction ? 'Procesando…' : '⚡ Relleno rápido (bots + arrancar)'}
+                      </button>
+                    )}
                     {/* Torneo en curso: cualquiera (incluso eliminado) puede ver
                         la clasificación y desde ahí mirar las mesas en vivo (👁) */}
                     {running && (
@@ -524,9 +554,10 @@ export function LobbyPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={createPrivateTable}
-              className="bg-purple-700 hover:bg-purple-600 text-white font-bold px-5 py-2 rounded-xl transition-colors"
+              disabled={busyAction}
+              className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl transition-colors"
             >
-              + Crear mi mesa privada
+              {busyAction ? 'Creando…' : '+ Crear mi mesa privada'}
             </button>
             <span className="text-gray-500 text-sm">o</span>
             <div className="flex gap-2">

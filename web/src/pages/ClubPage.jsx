@@ -50,6 +50,8 @@ export function ClubPage() {
   // Bots del dueño
   const [botLevel, setBotLevel] = useState(6);
   const [botCount, setBotCount] = useState(3);
+  // Candado anti doble-clic: ignora clics repetidos mientras se crea algo
+  const [creating, setCreating] = useState(false);
   // Crear mesa
   const [mName, setMName] = useState('');
   const [mSB, setMSB] = useState(5);
@@ -111,6 +113,14 @@ export function ClubPage() {
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al agregar bots'); }
   }
+  async function deleteTable(tableId, name) {
+    if (!window.confirm(`¿Eliminar la mesa "${name}"? Solo se puede si está vacía.`)) return;
+    try {
+      await api.delete(`/clubs/${id}/tables/${tableId}`);
+      toast.success('Mesa eliminada');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar la mesa'); }
+  }
   async function addTableBots(tableId) {
     try {
       const { data } = await api.post(`/clubs/${id}/tables/${tableId}/bots`, { level: botLevel, count: botCount, buyIn: 500 });
@@ -159,6 +169,8 @@ export function ClubPage() {
     toast.success(`Código de unión ${club.union.code} copiado — pásalo a otros dueños de club`);
   }
   async function createTable() {
+    if (creating) return;               // ignora doble-clic mientras crea
+    setCreating(true);
     try {
       const { data } = await api.post(`/clubs/${id}/tables`, {
         name: mName || 'Mesa del club', smallBlind: mSB, bigBlind: mBB, maxSeats: mSeats,
@@ -167,8 +179,11 @@ export function ClubPage() {
       toast.success(`Mesa "${data.name}" creada`);
       setTab('partidas'); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear la mesa'); }
+    finally { setCreating(false); }
   }
   async function createTournament() {
+    if (creating) return;               // ignora doble-clic mientras crea
+    setCreating(true);
     try {
       await api.post(`/clubs/${id}/tournaments`, {
         name: tName || 'Torneo del club', maxPlayers: tMax, buyIn: tBuyIn, fee: tFee,
@@ -181,6 +196,7 @@ export function ClubPage() {
       toast.success(tStart ? 'Torneo programado' : 'Torneo creado');
       setTab('partidas'); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear el torneo'); }
+    finally { setCreating(false); }
   }
 
   if (error) {
@@ -322,7 +338,11 @@ export function ClubPage() {
                     <button onClick={() => { setBuyInModal(t); setBuyIn(String(t.buy_in_min)); }}
                       className="flex-1 bg-green-700 hover:bg-green-600 font-bold py-2 rounded-xl text-sm">Sentarme</button>
                     {club.isOwner && (
-                      <button onClick={() => addTableBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                      <>
+                        <button onClick={() => addTableBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                        <button onClick={() => deleteTable(t.id, t.name)} title="Eliminar mesa (si está vacía)"
+                          className="bg-red-900/60 hover:bg-red-800 text-red-200 px-3 py-2 rounded-xl text-xs font-bold">🗑</button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -526,7 +546,7 @@ export function ClubPage() {
                   <Input type="number" min={0} max={5} value={mCap} onChange={e => setMCap(Number(e.target.value))} /></div>
               </div>
               <p className="text-[11px] text-gray-500">La comisión se cobra de cada bote (solo si hubo flop) y va a la caja del club.</p>
-              <Button onClick={createTable} className="w-full font-bold">Crear mesa</Button>
+              <Button onClick={createTable} disabled={creating} className="w-full font-bold">{creating ? 'Creando…' : 'Crear mesa'}</Button>
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
@@ -552,7 +572,7 @@ export function ClubPage() {
               <div><Label className="text-[10px] text-gray-500">Inicio programado (opcional)</Label>
                 <Input type="datetime-local" value={tStart} onChange={e => setTStart(e.target.value)} /></div>
               <p className="text-[11px] text-gray-500">La entrada es "buy-in + fee": el buy-in va al pozo de premios y el fee a la caja del club.</p>
-              <Button onClick={createTournament} className="w-full font-bold">Crear torneo</Button>
+              <Button onClick={createTournament} disabled={creating} className="w-full font-bold">{creating ? 'Creando…' : 'Crear torneo'}</Button>
             </div>
           </div>
         )}

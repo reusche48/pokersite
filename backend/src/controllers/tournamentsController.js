@@ -394,6 +394,49 @@ async function fillClubBots(req, res) {
   }
 }
 
+// POST /tournaments/:id/quickfill  (admin) → RELLENO RÁPIDO para pruebas:
+// te inscribe (si no lo estás), llena TODOS los asientos con bots aleatorios
+// de cualquier nivel y arranca el torneo. Devuelve tu mesa para entrar directo.
+async function quickFill(req, res) {
+  const tid = req.params.id, pid = req.player.id;
+  try {
+    const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tid]);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (t.status !== 'registering') return res.status(400).json({ error: 'El torneo ya arrancó o cerró' });
+
+    // 1) Inscribirte si aún no lo estás (respeta buy-in/fichas)
+    const [[mine]] = await pool.query('SELECT 1 x FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]);
+    if (!mine) {
+      try { await registerPlayer(tid, pid); }
+      catch (e) { if (e.http) return res.status(e.http).json({ error: e.msg }); throw e; }
+    }
+
+    // 2) Llenar TODOS los asientos restantes con bots ALEATORIOS (cualquier nivel)
+    const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [tid]);
+    const room = t.max_players - cnt.n;
+    if (room > 0) {
+      const [bots] = await pool.query(
+        `SELECT bot_id FROM bots
+         WHERE bot_id NOT IN (SELECT player_id FROM tournament_registrations WHERE tournament_id = ?)
+         ORDER BY RAND() LIMIT ?`,
+        [tid, room]
+      );
+      for (const b of bots) { try { await registerPlayer(tid, b.bot_id); } catch {} }
+    }
+
+    // 3) Arrancar el torneo ya (esperamos para poder devolver tu mesa)
+    try { await startTournament(tid); }
+    catch (e) { return res.status(400).json({ error: e.message || 'No se pudo arrancar el torneo' }); }
+
+    // 4) Tu mesa, para que el frontend te lleve directo
+    const tableId = getPlayerTable(tid, pid);
+    res.json({ ok: true, started: true, tableId: tableId || null });
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[quickFill]', e); res.status(500).json({ error: 'Error en el relleno rápido' });
+  }
+}
+
 // POST /tournaments/:id/start  (admin) → forzar inicio
 async function start(req, res) {
   try {
@@ -464,4 +507,4 @@ async function cancelTournament(req, res) {
   }
 }
 
-module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, cancelTournament, myTable, standings, initScheduler };
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, cancelTournament, myTable, standings, initScheduler };

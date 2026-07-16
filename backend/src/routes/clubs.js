@@ -3,7 +3,7 @@ const {
   createClub, joinClub, myClubs, getClub, kickMember, leaveClub,
   approveMember, updateClub, createUnion, joinUnion, leaveUnion,
 } = require('../controllers/clubsController');
-const { createClubTable } = require('../controllers/tablesController');
+const { createClubTable, deleteClubTable } = require('../controllers/tablesController');
 const { createClubTournament, fillClubBots } = require('../controllers/tournamentsController');
 const { seatClubBots } = require('../controllers/adminController');
 const { authMiddleware } = require('../middleware/auth');
@@ -27,6 +27,7 @@ router.post('/:id/leave', leaveClub);
 
 // Partidas del club (permisos de dueño se validan en cada handler)
 router.post('/:id/tables', createClubTable);
+router.delete('/:id/tables/:tableId', deleteClubTable);
 router.post('/:id/tournaments', createClubTournament);
 router.post('/:id/tournaments/:tid/bots', fillClubBots);
 router.post('/:id/tables/:tableId/bots', seatClubBots);
