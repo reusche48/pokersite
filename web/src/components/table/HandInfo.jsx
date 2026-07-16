@@ -24,6 +24,11 @@ export function HandInfo({ myCards, community, phase }) {
   }, [sig]);
 
   if (!info?.hand) return null;
+  const madeHand = info.hand.rank >= 2;         // par o mejor
+  const draws = info.draws || [];
+  // Solo vale la pena mostrarlo si tengo jugada hecha o un proyecto.
+  // "Carta alta" a secas (ej. "Cinco alta") no se muestra — no aporta nada.
+  if (!madeHand && draws.length === 0) return null;
 
   return (
     <AnimatePresence>
@@ -35,11 +40,13 @@ export function HandInfo({ myCards, community, phase }) {
           transition={{ duration: 0.4 }}
           className="bg-black/75 border border-white/10 rounded-lg px-3 py-2 backdrop-blur-sm pointer-events-none select-none"
         >
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Tienes</span>
-            <span className="text-sm font-bold text-yellow-300">{info.hand.name}</span>
-          </div>
-          {info.draws.map((d, i) => (
+          {madeHand && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Tienes</span>
+              <span className="text-sm font-bold text-yellow-300">{info.hand.name}</span>
+            </div>
+          )}
+          {draws.map((d, i) => (
             <div key={i} className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Buscas</span>
               <span className="text-xs font-semibold text-sky-300">

@@ -513,7 +513,7 @@ export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
 
         {/* Live hand info — only while I'm still in the hand */}
         {['active', 'all_in'].includes(mySeat?.status) && (
-          <div className={isMobile ? 'absolute top-[57%] left-1/2 -translate-x-1/2 z-30 scale-90' : 'absolute bottom-[110px] right-3 z-30'}>
+          <div className={isMobile ? 'absolute top-[18%] left-1/2 -translate-x-1/2 z-30 scale-90' : 'absolute bottom-[110px] right-3 z-30'}>
             <HandInfo myCards={myCards} community={tableState.community} phase={tableState.phase} />
           </div>
         )}

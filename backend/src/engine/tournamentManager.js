@@ -18,15 +18,18 @@ const STARTING_STACK = 1500;
 const TABLE_SIZE = 6;
 
 // Schedule por defecto (niveles de ciegas por minutos)
+// Stack inicial = 1500. Las ciegas suben gradualmente y NO pasan del stack
+// (antes terminaba en 800/1600, por encima de 1500 → all-ins forzados).
 const DEFAULT_BLINDS = [
   { smallBlind: 10, bigBlind: 20, minutes: 3 },
   { smallBlind: 15, bigBlind: 30, minutes: 3 },
   { smallBlind: 25, bigBlind: 50, minutes: 3 },
   { smallBlind: 50, bigBlind: 100, minutes: 3, ante: 10 },
+  { smallBlind: 75, bigBlind: 150, minutes: 3, ante: 15 },
   { smallBlind: 100, bigBlind: 200, minutes: 3, ante: 25 },
+  { smallBlind: 150, bigBlind: 300, minutes: 3, ante: 30 },
   { smallBlind: 200, bigBlind: 400, minutes: 3, ante: 50 },
-  { smallBlind: 400, bigBlind: 800, minutes: 3, ante: 100 },
-  { smallBlind: 800, bigBlind: 1600, minutes: 99, ante: 200 },
+  { smallBlind: 300, bigBlind: 600, minutes: 99, ante: 75 },
 ];
 
 // Runtime por torneo: tournamentId → { tableIds, botClients(Map), seatOf(Map),
