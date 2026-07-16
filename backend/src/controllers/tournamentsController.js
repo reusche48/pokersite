@@ -394,46 +394,62 @@ async function fillClubBots(req, res) {
   }
 }
 
-// POST /tournaments/:id/quickfill  (admin) → RELLENO RÁPIDO para pruebas:
-// te inscribe (si no lo estás), llena TODOS los asientos con bots aleatorios
-// de cualquier nivel y arranca el torneo. Devuelve tu mesa para entrar directo.
+// Núcleo del RELLENO RÁPIDO (pruebas): inscribe a `pid` (si falta), llena TODOS
+// los asientos con bots aleatorios y arranca el torneo. Devuelve {tableId} o
+// lanza {http,msg}. Lo usan el admin (torneos del lobby) y el dueño del club.
+async function doQuickFill(tid, pid) {
+  const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tid]);
+  if (!t) throw { http: 404, msg: 'Torneo no encontrado' };
+  if (t.status !== 'registering') throw { http: 400, msg: 'El torneo ya arrancó o cerró' };
+
+  // 1) Inscribir al jugador si aún no lo está (respeta buy-in/fichas)
+  const [[mine]] = await pool.query('SELECT 1 x FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]);
+  if (!mine) await registerPlayer(tid, pid);
+
+  // 2) Llenar los asientos restantes con bots ALEATORIOS (cualquier nivel)
+  const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [tid]);
+  const room = t.max_players - cnt.n;
+  if (room > 0) {
+    const [bots] = await pool.query(
+      `SELECT bot_id FROM bots
+       WHERE bot_id NOT IN (SELECT player_id FROM tournament_registrations WHERE tournament_id = ?)
+       ORDER BY RAND() LIMIT ?`,
+      [tid, room]
+    );
+    for (const b of bots) { try { await registerPlayer(tid, b.bot_id); } catch {} }
+  }
+
+  // 3) Arrancar el torneo (esperamos para poder devolver la mesa)
+  try { await startTournament(tid); }
+  catch (e) { throw { http: 400, msg: e.message || 'No se pudo arrancar el torneo' }; }
+
+  // 4) La mesa del jugador, para llevarlo directo
+  return { ok: true, started: true, tableId: getPlayerTable(tid, pid) || null };
+}
+
+// POST /tournaments/:id/quickfill  (admin) → torneos del lobby
 async function quickFill(req, res) {
-  const tid = req.params.id, pid = req.player.id;
   try {
-    const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tid]);
-    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
-    if (t.status !== 'registering') return res.status(400).json({ error: 'El torneo ya arrancó o cerró' });
-
-    // 1) Inscribirte si aún no lo estás (respeta buy-in/fichas)
-    const [[mine]] = await pool.query('SELECT 1 x FROM tournament_registrations WHERE tournament_id = ? AND player_id = ?', [tid, pid]);
-    if (!mine) {
-      try { await registerPlayer(tid, pid); }
-      catch (e) { if (e.http) return res.status(e.http).json({ error: e.msg }); throw e; }
-    }
-
-    // 2) Llenar TODOS los asientos restantes con bots ALEATORIOS (cualquier nivel)
-    const [[cnt]] = await pool.query('SELECT COUNT(*) n FROM tournament_registrations WHERE tournament_id = ?', [tid]);
-    const room = t.max_players - cnt.n;
-    if (room > 0) {
-      const [bots] = await pool.query(
-        `SELECT bot_id FROM bots
-         WHERE bot_id NOT IN (SELECT player_id FROM tournament_registrations WHERE tournament_id = ?)
-         ORDER BY RAND() LIMIT ?`,
-        [tid, room]
-      );
-      for (const b of bots) { try { await registerPlayer(tid, b.bot_id); } catch {} }
-    }
-
-    // 3) Arrancar el torneo ya (esperamos para poder devolver tu mesa)
-    try { await startTournament(tid); }
-    catch (e) { return res.status(400).json({ error: e.message || 'No se pudo arrancar el torneo' }); }
-
-    // 4) Tu mesa, para que el frontend te lleve directo
-    const tableId = getPlayerTable(tid, pid);
-    res.json({ ok: true, started: true, tableId: tableId || null });
+    res.json(await doQuickFill(req.params.id, req.player.id));
   } catch (e) {
     if (e.http) return res.status(e.http).json({ error: e.msg });
     console.error('[quickFill]', e); res.status(500).json({ error: 'Error en el relleno rápido' });
+  }
+}
+
+// POST /clubs/:id/tournaments/:tid/quickfill  (dueño del club)
+async function quickFillClub(req, res) {
+  try {
+    const { isClubOwner } = require('./clubsController');
+    if (!(await isClubOwner(req.params.id, req.player.id))) {
+      return res.status(403).json({ error: 'Solo el dueño del club puede usar el relleno rápido' });
+    }
+    const [[t]] = await pool.query('SELECT club_id FROM tournaments WHERE id = ?', [req.params.tid]);
+    if (!t || t.club_id !== req.params.id) return res.status(404).json({ error: 'Ese torneo no es de este club' });
+    res.json(await doQuickFill(req.params.tid, req.player.id));
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[quickFillClub]', e); res.status(500).json({ error: 'Error en el relleno rápido' });
   }
 }
 
@@ -527,4 +543,4 @@ async function cancelClubTournament(req, res) {
   }
 }
 
-module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, cancelTournament, cancelClubTournament, myTable, standings, initScheduler };
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, quickFillClub, cancelTournament, cancelClubTournament, myTable, standings, initScheduler };
