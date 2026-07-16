@@ -113,6 +113,14 @@ export function ClubPage() {
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al agregar bots'); }
   }
+  async function cancelClubTournament(tid, name) {
+    if (!window.confirm(`¿Cancelar el torneo "${name}"? Se reembolsa la entrada a todos los inscritos.`)) return;
+    try {
+      await api.delete(`/clubs/${id}/tournaments/${tid}`);
+      toast.success('Torneo cancelado y reembolsado');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo cancelar el torneo'); }
+  }
   async function deleteTable(tableId, name) {
     if (!window.confirm(`¿Eliminar la mesa "${name}"? Solo se puede si está vacía.`)) return;
     try {
@@ -313,7 +321,11 @@ export function ClubPage() {
                         </button>
                       )}
                       {club.isOwner && t.status === 'registering' && (
-                        <button onClick={() => addTournamentBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                        <>
+                          <button onClick={() => addTournamentBots(t.id)} className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl text-xs font-bold">+ Bots</button>
+                          <button onClick={() => cancelClubTournament(t.id, t.name)} title="Cancelar torneo (reembolsa a los inscritos)"
+                            className="bg-red-900/60 hover:bg-red-800 text-red-200 px-3 py-2 rounded-xl text-xs font-bold">🗑</button>
+                        </>
                       )}
                     </div>
                   </div>

@@ -461,20 +461,18 @@ function standings(req, res) {
   res.json(data);
 }
 
-// POST /tournaments/:id/cancel (admin) — cancela un torneo EN INSCRIPCIÓN y
-// reembolsa buy-in+fee a todos los inscritos, revierte el fee de la caja del
-// club y libera los buy-ins bloqueados (antes no habia forma de recuperarlos).
-async function cancelTournament(req, res) {
-  const tid = req.params.id;
+// Núcleo de cancelación: cancela un torneo EN INSCRIPCIÓN y reembolsa
+// buy-in+fee a todos los inscritos, revierte el fee de la caja del club y
+// libera los buy-ins bloqueados. `expectClubId` (opcional) exige que el torneo
+// sea de ese club (para el dueño). Devuelve {ok} o lanza {http,msg}.
+async function doCancelTournament(tid, { expectClubId } = {}) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [[t]] = await conn.query('SELECT * FROM tournaments WHERE id = ? FOR UPDATE', [tid]);
-    if (!t) { await conn.rollback(); return res.status(404).json({ error: 'Torneo no encontrado' }); }
-    if (t.status !== 'registering') {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Solo se pueden cancelar torneos en inscripción' });
-    }
+    if (!t) { await conn.rollback(); throw { http: 404, msg: 'Torneo no encontrado' }; }
+    if (expectClubId && t.club_id !== expectClubId) { await conn.rollback(); throw { http: 404, msg: 'Ese torneo no es de este club' }; }
+    if (t.status !== 'registering') { await conn.rollback(); throw { http: 400, msg: 'Solo se pueden cancelar torneos en inscripción' }; }
     const [regs] = await conn.query('SELECT player_id FROM tournament_registrations WHERE tournament_id = ?', [tid]);
     const buyIn = parseFloat(t.buy_in) || 0, fee = parseFloat(t.fee) || 0, total = buyIn + fee;
     const chipCol = t.chip_mode === 'real' ? 'real_chips' : 'play_chips';
@@ -494,17 +492,39 @@ async function cancelTournament(req, res) {
     await conn.query('DELETE FROM tournament_registrations WHERE tournament_id = ?', [tid]);
     await conn.query("UPDATE tournaments SET status = 'cancelled' WHERE id = ?", [tid]);
     await conn.commit();
-    // Cancelar el arranque programado si lo tenía
     const timer = startSchedules.get(tid);
     if (timer) { clearTimeout(timer); startSchedules.delete(tid); }
-    res.json({ ok: true, refunded: regs.length, totalPorJugador: total });
+    return { ok: true, refunded: regs.length, totalPorJugador: total };
   } catch (e) {
     await conn.rollback();
-    console.error('[cancelTournament]', e.message);
-    res.status(500).json({ error: 'No se pudo cancelar el torneo' });
+    throw e;
   } finally {
     conn.release();
   }
 }
 
-module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, cancelTournament, myTable, standings, initScheduler };
+// POST /tournaments/:id/cancel (admin)
+async function cancelTournament(req, res) {
+  try {
+    res.json(await doCancelTournament(req.params.id));
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[cancelTournament]', e.message); res.status(500).json({ error: 'No se pudo cancelar el torneo' });
+  }
+}
+
+// POST /clubs/:id/tournaments/:tid/cancel (dueño del club)
+async function cancelClubTournament(req, res) {
+  try {
+    const { isClubOwner } = require('./clubsController');
+    if (!(await isClubOwner(req.params.id, req.player.id))) {
+      return res.status(403).json({ error: 'Solo el dueño del club puede cancelar torneos' });
+    }
+    res.json(await doCancelTournament(req.params.tid, { expectClubId: req.params.id }));
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[cancelClubTournament]', e.message); res.status(500).json({ error: 'No se pudo cancelar el torneo' });
+  }
+}
+
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, cancelTournament, cancelClubTournament, myTable, standings, initScheduler };
