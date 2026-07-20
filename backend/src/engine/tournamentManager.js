@@ -537,6 +537,7 @@ async function finalize(tournamentId) {
   // se aborta sin re-pagar. Antes esto eran statements sueltos en autocommit:
   // un crash a mitad dejaba unos cobrados y otros no, y el status en 'running'
   // permitía un doble pago al reanudar.
+  const prizes = {}; // playerId → premio, para la tarjeta de campeón
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -548,6 +549,7 @@ async function finalize(tournamentId) {
       // Bounty: el campeón cobra también su propia recompensa (estilo KO)
       const ownBounty = (Number(position) === 1 && rt.bounty > 0) ? Math.round(rt.bounty) : 0;
       const prize = Math.round(rt.prizePool * frac) + ownBounty;
+      prizes[playerId] = prize;
       await conn.query(
         'UPDATE tournament_registrations SET final_position = ?, prize_won = ? WHERE tournament_id = ? AND player_id = ?',
         [position, prize, tournamentId, playerId]
@@ -571,8 +573,16 @@ async function finalize(tournamentId) {
     conn.release();
   }
 
+  // Datos del campeón (posición 1) para la tarjeta de felicitación compartible.
+  const winnerId = Object.keys(rt.positions).find(pid => Number(rt.positions[pid]) === 1);
+  const champion = winnerId
+    ? { playerId: winnerId, nickname: rt.nicks?.[winnerId] || 'Campeón', prize: prizes[winnerId] || 0 }
+    : null;
   for (const tid of rt.tableIds) {
-    emitToTable(tid, 'torneo_finalizado', { tournamentId, name: tRow?.name, positions: rt.positions });
+    emitToTable(tid, 'torneo_finalizado', {
+      tournamentId, name: tRow?.name, positions: rt.positions,
+      totalEntrants: rt.totalEntrants, endedAt: new Date().toISOString(), champion,
+    });
   }
 
   // Limpiar tras la celebración
@@ -652,10 +662,13 @@ function getStandings(tournamentId) {
   const prizePool = rt.prizePool || 0;
   const payouts = {};
   Object.entries(rt.payout || {}).forEach(([pos, pct]) => { payouts[pos] = Math.round(prizePool * pct); });
+  // Nivel de ciegas actual (para el marcador en vivo)
+  const lvl = rt.schedule?.[Math.min(rt.blindIdx || 0, (rt.schedule?.length || 1) - 1)] || {};
   return {
     name: rt.name, total: rt.totalEntrants,
     paidPlaces: Object.keys(rt.payout || {}).length,
     prizePool, payouts, tables: rt.tableIds.length,
+    nivel: (rt.blindIdx || 0) + 1, smallBlind: lvl.smallBlind || null, bigBlind: lvl.bigBlind || null, ante: lvl.ante || 0,
     alive, eliminated,
   };
 }

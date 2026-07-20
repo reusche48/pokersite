@@ -1,7 +1,8 @@
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { PokerTable } from '../components/table/PokerTable';
+import { ChampionOverlay } from '../components/tournament/ChampionOverlay';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { playSfx } from '../sounds/sfx';
@@ -14,6 +15,7 @@ export function TablePage() {
   const { player } = useAuth();
   const { socket, connected, connect } = useSocket();
   const navigate = useNavigate();
+  const [champ, setChamp] = useState(null); // tarjeta de campeón si YO gané
 
   useEffect(() => {
     if (!player) { navigate('/'); return; }
@@ -31,7 +33,16 @@ export function TablePage() {
       if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       if (tableId && tableId !== id) navigate(`/table/${tableId}?buyIn=1500`);
     };
-    const onEnd = () => { setTimeout(() => navigate('/'), 9000); };
+    // Fin del torneo: si YO soy el campeón, muestro la tarjeta de felicitación
+    // (no me saca al lobby hasta que la cierre). Si no, vuelvo al lobby.
+    const onEnd = (data) => {
+      if (data?.champion && data.champion.playerId === player?.id) {
+        playSfx('victory_fanfare');
+        setChamp(data);
+      } else {
+        setTimeout(() => navigate('/'), 9000);
+      }
+    };
     // La mesa se cerró al formar la mesa final. A los jugadores activos ya los
     // mueve onMove (que cancela este timer); los que solo miraban vuelven al lobby.
     const onTableClosed = () => {
@@ -79,5 +90,10 @@ export function TablePage() {
     );
   }
 
-  return <PokerTable tableId={id} initialBuyIn={buyIn} spectate={spectate} />;
+  return (
+    <>
+      <PokerTable tableId={id} initialBuyIn={buyIn} spectate={spectate} />
+      {champ && <ChampionOverlay data={champ} onClose={() => { setChamp(null); navigate('/'); }} />}
+    </>
+  );
 }
