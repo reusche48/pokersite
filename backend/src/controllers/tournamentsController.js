@@ -125,17 +125,20 @@ async function doCreateTournament(body, creatorId, clubId = null) {
     startsAtDate = new Date(startsAt);
     if (isNaN(startsAtDate.getTime())) throw { http: 400, msg: 'Fecha/hora inválida' };
   }
+  // Por invitación: solo el organizador inscribe (nadie se apunta solo). Solo
+  // aplica a torneos de club (en el lobby no tiene sentido).
+  const inviteOnly = clubId && !!body.inviteOnly ? 1 : 0;
   const id = uuidv4();
   const scheduleJson = JSON.stringify(Array.isArray(blindSchedule) && blindSchedule.length ? blindSchedule : DEFAULT_BLINDS);
   const payoutJson = JSON.stringify(defaultPayout(max));
   await pool.query(
     `INSERT INTO tournaments
-       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, starts_at, bounty, fee, club_id, created_by)
-     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, ?, ?, ?, 'registering', ?, ?, ?, ?, ?)`,
-    [id, name.trim(), max, buyInNum, addedPrize, payoutJson, scheduleJson, startsAtDate, bountyNum, feeNum, clubId, creatorId]
+       (id, name, game_type, chip_mode, tournament_type, max_players, min_players, buy_in, rake, prize_pool, payout_json, blind_schedule_json, status, starts_at, bounty, fee, club_id, invite_only, created_by)
+     VALUES (?, ?, 'holdem', 'play', 'sit_and_go', ?, 2, ?, 0, ?, ?, ?, 'registering', ?, ?, ?, ?, ?, ?)`,
+    [id, name.trim(), max, buyInNum, addedPrize, payoutJson, scheduleJson, startsAtDate, bountyNum, feeNum, clubId, inviteOnly, creatorId]
   );
   if (startsAtDate) scheduleStart(id, startsAtDate.getTime());
-  return { id, name: name.trim(), maxPlayers: max, buyIn: buyInNum, bounty: bountyNum, fee: feeNum, addedPrize, startsAt: startsAtDate, clubId };
+  return { id, name: name.trim(), maxPlayers: max, buyIn: buyInNum, bounty: bountyNum, fee: feeNum, addedPrize, startsAt: startsAtDate, clubId, inviteOnly };
 }
 
 // POST /tournaments  (admin global)
@@ -269,6 +272,14 @@ async function register(req, res) {
   try {
     const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tid]);
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+
+    // Torneo POR INVITACIÓN: nadie se apunta solo; solo el organizador inscribe.
+    // (El dueño sí puede auto-inscribirse para jugar él también.)
+    if (t.invite_only) {
+      const { isClubOwner } = require('./clubsController');
+      const soyOrganizador = t.club_id && await isClubOwner(t.club_id, pid);
+      if (!soyOrganizador) return res.status(403).json({ error: 'Este torneo es por invitación — solo el organizador inscribe.' });
+    }
 
     if (t.status === 'running') {
       if (!isLateRegOpen(tid)) return res.status(400).json({ error: 'La inscripción tardía ya cerró' });
@@ -437,6 +448,31 @@ async function quickFill(req, res) {
   }
 }
 
+// POST /clubs/:id/tournaments/:tid/invite  { playerId }  (dueño del club)
+// El organizador inscribe a un miembro concreto (el que pagó). Cobra el buy-in
+// en fichas al invitado, como una inscripción normal.
+async function inviteToClubTournament(req, res) {
+  try {
+    const { isClubOwner, canPlayClub } = require('./clubsController');
+    if (!(await isClubOwner(req.params.id, req.player.id))) {
+      return res.status(403).json({ error: 'Solo el dueño del club puede inscribir jugadores' });
+    }
+    const [[t]] = await pool.query('SELECT club_id, status FROM tournaments WHERE id = ?', [req.params.tid]);
+    if (!t || t.club_id !== req.params.id) return res.status(404).json({ error: 'Ese torneo no es de este club' });
+    if (t.status !== 'registering') return res.status(400).json({ error: 'Inscripciones cerradas' });
+    const playerId = (req.body.playerId || '').toString();
+    if (!playerId) return res.status(400).json({ error: 'Falta el jugador' });
+    if (!(await canPlayClub(req.params.id, playerId))) {
+      return res.status(400).json({ error: 'Ese jugador no es miembro activo del club' });
+    }
+    await registerPlayer(req.params.tid, playerId); // cobra el buy-in al invitado
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.http) return res.status(e.http).json({ error: e.msg });
+    console.error('[inviteToClubTournament]', e); res.status(500).json({ error: 'No se pudo inscribir al jugador' });
+  }
+}
+
 // POST /clubs/:id/tournaments/:tid/quickfill  (dueño del club)
 async function quickFillClub(req, res) {
   try {
@@ -465,9 +501,12 @@ async function start(req, res) {
 
 // GET /tournaments/:id/my-table  → mesa actual del jugador (para (re)entrar)
 async function myTable(req, res) {
-  const tableId = getPlayerTable(req.params.id, req.player.id);
-  if (!tableId) return res.status(404).json({ error: 'No estás en una mesa activa de este torneo' });
-  res.json({ tableId });
+  const { resolveMyTable } = require('../engine/tournamentManager');
+  const r = resolveMyTable(req.params.id, req.player.id);
+  // r = { tableId, spectate }. Si estás eliminado, spectate:true → ves la mesa
+  // final; si el torneo ya terminó, null → 404.
+  if (!r) return res.status(404).json({ error: 'El torneo ya terminó' });
+  res.json(r);
 }
 
 // GET /tournaments/:id/standings  → clasificación (vivos + eliminados)
@@ -475,6 +514,46 @@ function standings(req, res) {
   const data = getStandings(req.params.id);
   if (!data) return res.status(404).json({ error: 'Torneo no activo' });
   res.json(data);
+}
+
+// GET /tournaments/:id/public  → MARCADOR PÚBLICO (sin login). Cualquiera con
+// el link ve el estado del torneo: inscritos / en curso / resultado final.
+// Solo datos públicos (nada de cartas ni nada sensible).
+async function publicStandings(req, res) {
+  const tid = req.params.id;
+  const [[t]] = await pool.query(
+    'SELECT id, name, status, buy_in, fee, prize_pool, max_players, starts_at, bounty FROM tournaments WHERE id = ?', [tid]
+  );
+  if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+
+  const base = {
+    id: t.id, name: t.name, status: t.status,
+    buyIn: Number(t.buy_in) || 0, fee: Number(t.fee) || 0,
+    prizePool: Number(t.prize_pool) || 0, maxPlayers: t.max_players,
+    bounty: Number(t.bounty) || 0, startsAt: t.starts_at,
+  };
+
+  if (t.status === 'running') {
+    const s = getStandings(tid);
+    return res.json({ ...base, ...(s || {}) });
+  }
+
+  if (t.status === 'registering') {
+    const [regs] = await pool.query(
+      `SELECT p.nickname, p.is_bot FROM tournament_registrations r JOIN players p ON p.id = r.player_id
+       WHERE r.tournament_id = ? ORDER BY r.registered_at`, [tid]
+    );
+    return res.json({ ...base, inscritos: regs.map(r => ({ nickname: r.nickname, isBot: !!r.is_bot })) });
+  }
+
+  // finished / cancelled → ranking final desde la BD
+  const [fin] = await pool.query(
+    `SELECT p.nickname, r.final_position, r.prize_won
+     FROM tournament_registrations r JOIN players p ON p.id = r.player_id
+     WHERE r.tournament_id = ? AND r.final_position IS NOT NULL
+     ORDER BY r.final_position`, [tid]
+  );
+  return res.json({ ...base, resultado: fin.map(f => ({ nickname: f.nickname, position: f.final_position, prize: Number(f.prize_won) || 0 })) });
 }
 
 // Núcleo de cancelación: cancela un torneo EN INSCRIPCIÓN y reembolsa
@@ -543,4 +622,4 @@ async function cancelClubTournament(req, res) {
   }
 }
 
-module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, quickFillClub, cancelTournament, cancelClubTournament, myTable, standings, initScheduler };
+module.exports = { listTournaments, getTournament, createTournament, createClubTournament, register, unregister, fillBots, fillClubBots, start, quickFill, quickFillClub, inviteToClubTournament, cancelTournament, cancelClubTournament, myTable, standings, publicStandings, initScheduler };

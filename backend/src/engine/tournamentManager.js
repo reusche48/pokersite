@@ -600,6 +600,25 @@ function getPlayerTable(tournamentId, playerId) {
   return rt?.seatOf?.get(playerId) || null;
 }
 
+// Resuelve a qué mesa mandar al jugador cuando pulsa "entrar" a un torneo en
+// curso, distinguiendo al que sigue vivo del que ya fue eliminado.
+//  - Sentado y vivo  → su mesa (spectate:false), para jugar.
+//  - Eliminado o su mesa vieja ya se cerró → una mesa VIVA (la final) como
+//    ESPECTADOR (spectate:true), en vez de mandarlo a una mesa que ya no existe.
+//  - Torneo sin mesas vivas (ya terminó) → null.
+function resolveMyTable(tournamentId, playerId) {
+  const rt = runtime.get(tournamentId);
+  if (!rt) return null;
+  const seated = rt.seatOf.get(playerId);
+  if (seated) {
+    const t = tm.getTable(seated);
+    if (t && tm.isPlayerSeated(t, playerId)) return { tableId: seated, spectate: false };
+  }
+  const live = rt.tableIds.find(id => tm.getTable(id));
+  if (live) return { tableId: live, spectate: true };
+  return null;
+}
+
 // ── Inscripción tardía y re-entry ──
 const LATE_REG_LEVELS = 3; // se puede entrar/volver hasta antes del nivel 4 de ciegas
 
@@ -673,4 +692,4 @@ function getStandings(tournamentId) {
   };
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, getStandings, resumeTournaments, isLateRegOpen, lateJoin };
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, resolveMyTable, getStandings, resumeTournaments, isLateRegOpen, lateJoin };

@@ -265,9 +265,12 @@ export function LobbyPage() {
   async function enterTournament(id) {
     try {
       const { data } = await api.get(`/tournaments/${id}/my-table`);
-      navigate(`/table/${data.tableId}?buyIn=1500`);
+      // Eliminado → spectate:true → entro como espectador (?watch=1) a la mesa
+      // final, en vez de a mi mesa vieja que ya no existe.
+      navigate(`/table/${data.tableId}?${data.spectate ? 'watch=1' : 'buyIn=1500'}`);
     } catch (e) {
-      toast.error(e.response?.data?.error || 'No se encontró tu mesa');
+      toast.error(e.response?.data?.error || 'El torneo ya terminó');
+      fetchTournaments();
     }
   }
 
@@ -403,8 +406,11 @@ export function LobbyPage() {
                   btn = <button onClick={() => joinTournament(t.id)} className="w-full bg-purple-700 hover:bg-purple-600 text-white font-bold py-2 rounded-xl transition-colors">🔄 Re-entrar (${t.buy_in})</button>;
                 } else if (running && !mine && t.late_reg_open) {
                   btn = <button onClick={() => joinTournament(t.id)} className="w-full bg-yellow-700 hover:bg-yellow-600 text-white font-bold py-2 rounded-xl transition-colors">🕐 Inscripción tardía (${t.buy_in})</button>;
+                } else if (running && eliminated) {
+                  // Eliminado: puede VER la mesa final (espectador), no entrar a una mesa muerta
+                  btn = <button onClick={() => enterTournament(t.id)} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-xl transition-colors">👁 Ver mesa final · {t.my_final_position}º</button>;
                 } else if (running) {
-                  btn = <button disabled className="w-full bg-gray-700 opacity-40 text-white font-bold py-2 rounded-xl">{eliminated ? `Eliminado (${t.my_final_position}º)` : 'En curso'}</button>;
+                  btn = <button disabled className="w-full bg-gray-700 opacity-40 text-white font-bold py-2 rounded-xl">En curso</button>;
                 } else {
                   btn = (
                     <button
