@@ -8,6 +8,7 @@ import { AdminNav } from './AdminNav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SPEEDS } from '../../lib/blindSchedules';
 
 const LEVELS = [5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -23,50 +24,8 @@ const torneoSchema = z.object({
 });
 
 // Presets de velocidad (niveles de ciegas). "normal" usa el schedule del servidor.
-const SPEEDS = {
-  normal: { label: 'Normal (3 min)', schedule: null },
-  turbo: {
-    label: 'Turbo (30s)',
-    schedule: [
-      { smallBlind: 10, bigBlind: 20, minutes: 0.5 },
-      { smallBlind: 15, bigBlind: 30, minutes: 0.5 },
-      { smallBlind: 25, bigBlind: 50, minutes: 0.5 },
-      { smallBlind: 50, bigBlind: 100, minutes: 0.5, ante: 10 },
-      { smallBlind: 75, bigBlind: 150, minutes: 0.5, ante: 15 },
-      { smallBlind: 100, bigBlind: 200, minutes: 0.5, ante: 25 },
-      { smallBlind: 150, bigBlind: 300, minutes: 0.5, ante: 30 },
-      { smallBlind: 200, bigBlind: 400, minutes: 0.5, ante: 50 },
-      { smallBlind: 300, bigBlind: 600, minutes: 0.5, ante: 75 },
-      { smallBlind: 400, bigBlind: 800, minutes: 99, ante: 100 },
-    ],
-  },
-  hyper: {
-    label: 'Hyper (15s)',
-    schedule: [
-      { smallBlind: 10, bigBlind: 20, minutes: 0.25 },
-      { smallBlind: 20, bigBlind: 40, minutes: 0.25 },
-      { smallBlind: 30, bigBlind: 60, minutes: 0.25, ante: 5 },
-      { smallBlind: 50, bigBlind: 100, minutes: 0.25, ante: 10 },
-      { smallBlind: 75, bigBlind: 150, minutes: 0.25, ante: 15 },
-      { smallBlind: 100, bigBlind: 200, minutes: 0.25, ante: 25 },
-      { smallBlind: 150, bigBlind: 300, minutes: 0.25, ante: 30 },
-      { smallBlind: 200, bigBlind: 400, minutes: 0.25, ante: 50 },
-      { smallBlind: 300, bigBlind: 600, minutes: 99, ante: 75 },
-    ],
-  },
-  deep: {
-    label: 'Deep (6 min)',
-    schedule: [
-      { smallBlind: 5, bigBlind: 10, minutes: 6 },
-      { smallBlind: 10, bigBlind: 20, minutes: 6 },
-      { smallBlind: 20, bigBlind: 40, minutes: 6 },
-      { smallBlind: 40, bigBlind: 80, minutes: 6, ante: 10 },
-      { smallBlind: 80, bigBlind: 160, minutes: 6, ante: 20 },
-      { smallBlind: 150, bigBlind: 300, minutes: 6, ante: 40 },
-      { smallBlind: 300, bigBlind: 600, minutes: 99, ante: 75 },
-    ],
-  },
-};
+// SPEEDS (estructura de ciegas) se importa de ../../lib/blindSchedules
+// (compartido con el club y calibrado para el stack inicial de 10.000).
 
 export function AdminTournamentsPage() {
   const [list, setList] = useState([]);

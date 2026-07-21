@@ -8,42 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { SPEEDS } from '../lib/blindSchedules';
 
 // Velocidades de ciegas (mismos presets que el panel admin).
 // Stack inicial = 1500. Las ciegas suben GRADUALMENTE — nunca saltan por
 // encima del stack (antes el turbo brincaba a 1000/2000 y todos quedaban
 // all-in al instante).
-const SPEEDS = {
-  normal: { label: 'Normal (3 min)', schedule: null },
-  turbo: {
-    label: 'Turbo (30s)',
-    schedule: [
-      { smallBlind: 10, bigBlind: 20, minutes: 0.5 },
-      { smallBlind: 15, bigBlind: 30, minutes: 0.5 },
-      { smallBlind: 25, bigBlind: 50, minutes: 0.5 },
-      { smallBlind: 50, bigBlind: 100, minutes: 0.5, ante: 10 },
-      { smallBlind: 75, bigBlind: 150, minutes: 0.5, ante: 15 },
-      { smallBlind: 100, bigBlind: 200, minutes: 0.5, ante: 25 },
-      { smallBlind: 150, bigBlind: 300, minutes: 0.5, ante: 30 },
-      { smallBlind: 200, bigBlind: 400, minutes: 0.5, ante: 50 },
-      { smallBlind: 300, bigBlind: 600, minutes: 0.5, ante: 75 },
-      { smallBlind: 400, bigBlind: 800, minutes: 99, ante: 100 },
-    ],
-  },
-  deep: {
-    label: 'Deep (6 min)',
-    schedule: [
-      { smallBlind: 5, bigBlind: 10, minutes: 6 },
-      { smallBlind: 10, bigBlind: 20, minutes: 6 },
-      { smallBlind: 15, bigBlind: 30, minutes: 6 },
-      { smallBlind: 25, bigBlind: 50, minutes: 6, ante: 5 },
-      { smallBlind: 50, bigBlind: 100, minutes: 6, ante: 10 },
-      { smallBlind: 75, bigBlind: 150, minutes: 6, ante: 15 },
-      { smallBlind: 100, bigBlind: 200, minutes: 6, ante: 25 },
-      { smallBlind: 150, bigBlind: 300, minutes: 99, ante: 30 },
-    ],
-  },
-};
+// SPEEDS (estructura de ciegas) se importa de ../lib/blindSchedules (compartido
+// con el panel admin y calibrado para el stack inicial de 10.000).
 
 const LEVELS = [5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -81,6 +53,8 @@ export function ClubPage() {
   const [tBounty, setTBounty] = useState('0');
   const [tSpeed, setTSpeed] = useState('turbo');
   const [tStart, setTStart] = useState('');
+  const [tInvite, setTInvite] = useState(false);   // torneo por invitación
+  const [invitePicker, setInvitePicker] = useState(null); // torneo para el que se abre el selector de miembros
 
   async function load() {
     try {
@@ -123,6 +97,11 @@ export function ClubPage() {
       toast.success(`${data.added} bots agregados${data.started ? ' — ¡torneo iniciado!' : ''}`);
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al agregar bots'); }
+  }
+  function copyPublicLink(tid) {
+    const url = `${window.location.origin}/ver/${tid}`;
+    navigator.clipboard?.writeText(url);
+    toast.success('🔗 Link público copiado — compártelo para que vean el torneo');
   }
   async function quickFillClubTournament(tid) {
     if (creating) return;
@@ -220,6 +199,7 @@ export function ClubPage() {
       await api.post(`/clubs/${id}/tournaments`, {
         name: tName || 'Torneo del club', maxPlayers: tMax, buyIn: tBuyIn, fee: tFee,
         bounty: tBounty, blindSchedule: SPEEDS[tSpeed]?.schedule || null,
+        inviteOnly: tInvite,
         // Convertir la hora local del input a ISO UTC en el navegador (que sabe
         // la zona del usuario). Sin esto, el servidor interpreta la hora en SU
         // zona (Railway = UTC) y el inicio queda descuadrado.
@@ -229,6 +209,22 @@ export function ClubPage() {
       setTab('partidas'); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Error al crear el torneo'); }
     finally { setCreating(false); }
+  }
+  // Torneo por invitación: abrir el selector de miembros a inscribir
+  async function openInvitePicker(t) {
+    try {
+      const { data } = await api.get(`/tournaments/${t.id}/public`);
+      const ins = new Set((data.inscritos || []).map(x => x.nickname));
+      setInvitePicker({ id: t.id, name: t.name, inscritos: ins });
+    } catch { setInvitePicker({ id: t.id, name: t.name, inscritos: new Set() }); }
+  }
+  async function inviteMember(tid, playerId, nickname) {
+    try {
+      await api.post(`/clubs/${id}/tournaments/${tid}/invite`, { playerId });
+      toast.success(`${nickname} inscrito`);
+      setInvitePicker(p => p ? { ...p, inscritos: new Set([...p.inscritos, nickname]) } : p);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo inscribir'); }
   }
 
   if (error) {
@@ -338,6 +334,8 @@ export function ClubPage() {
                         </button>
                       ) : running ? (
                         <button disabled className="flex-1 bg-gray-700 opacity-40 font-bold py-2 rounded-xl text-sm">{eliminated ? `Eliminado (${t.my_final_position}º)` : 'En curso'}</button>
+                      ) : Number(t.invite_only) === 1 && !club.isOwner ? (
+                        <button disabled className="flex-1 bg-gray-700 opacity-50 font-bold py-2 rounded-xl text-sm">{mine ? 'Inscrito ✓' : '🔒 Por invitación'}</button>
                       ) : (
                         <button onClick={() => joinTournament(t.id)} disabled={full || mine}
                           className="flex-1 bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 font-bold py-2 rounded-xl text-sm">
@@ -346,6 +344,9 @@ export function ClubPage() {
                       )}
                       {club.isOwner && t.status === 'registering' && (
                         <>
+                          <button onClick={() => openInvitePicker(t)}
+                            title="Inscribir a un miembro (el que pagó)"
+                            className="bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 px-3 py-2 rounded-xl text-xs font-bold">➕</button>
                           <button onClick={() => quickFillClubTournament(t.id)} disabled={creating}
                             title="Te inscribe, llena con bots aleatorios y arranca (pruebas)"
                             className="bg-fuchsia-800/70 hover:bg-fuchsia-700 disabled:opacity-50 text-fuchsia-100 px-3 py-2 rounded-xl text-xs font-bold">⚡</button>
@@ -355,6 +356,11 @@ export function ClubPage() {
                         </>
                       )}
                     </div>
+                    {/* Link público del marcador — cualquiera puede compartirlo */}
+                    <button onClick={() => copyPublicLink(t.id)}
+                      className="mt-2 w-full text-xs text-sky-300 hover:text-sky-200 font-semibold py-1">
+                      🔗 Copiar link para que vean el torneo
+                    </button>
                   </div>
                 );
               })}
@@ -618,6 +624,12 @@ export function ClubPage() {
                 <Input type="datetime-local" value={tStart} onChange={e => setTStart(e.target.value)} />
                 <p className="text-[10px] text-gray-600 mt-1">Sin hora: arranca al llenarse (o con el botón ⚡).</p>
               </div>
+              <label className="flex items-start gap-2 cursor-pointer bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2">
+                <input type="checkbox" checked={tInvite} onChange={e => setTInvite(e.target.checked)} className="mt-0.5 accent-fuchsia-600" />
+                <span className="text-xs">
+                  <b className="text-fuchsia-300">🔒 Por invitación</b> — solo tú inscribes a los jugadores (el que pagó). Los demás solo pueden mirar.
+                </span>
+              </label>
               <p className="text-[11px] text-gray-500">La entrada es "buy-in + fee": el buy-in va al pozo de premios y el fee a la caja del club.</p>
               <Button onClick={createTournament} disabled={creating} className="w-full font-bold">{creating ? 'Creando…' : 'Crear torneo'}</Button>
             </div>
@@ -639,6 +651,30 @@ export function ClubPage() {
             <Button variant="secondary" onClick={() => setBuyInModal(null)}>Cancelar</Button>
             <Button onClick={() => { navigate(`/table/${buyInModal.id}?buyIn=${buyIn}`); setBuyInModal(null); }} className="font-bold">Entrar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Selector de miembros para inscribir en un torneo (por invitación) */}
+      <Dialog open={!!invitePicker} onOpenChange={(o) => { if (!o) setInvitePicker(null); }}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader><DialogTitle>Inscribir en {invitePicker?.name}</DialogTitle></DialogHeader>
+          <p className="text-xs text-gray-400 -mt-2">Agrega a los que te pagaron. El resto solo mira.</p>
+          <div className="overflow-y-auto space-y-1.5 mt-2 pr-1">
+            {(club?.members || []).map(m => {
+              const ya = invitePicker?.inscritos?.has(m.nickname);
+              return (
+                <div key={m.player_id} className="flex items-center gap-3 bg-gray-800/70 rounded-lg px-3 py-2">
+                  <Avatar nickname={m.nickname} avatarConfig={typeof m.avatar_config === 'string' ? JSON.parse(m.avatar_config || 'null') : m.avatar_config} size={30} />
+                  <span className="flex-1 min-w-0 text-sm truncate">{m.nickname}{m.role === 'owner' ? ' 👑' : ''}</span>
+                  {ya
+                    ? <span className="text-xs text-green-400 font-semibold shrink-0">Inscrito ✓</span>
+                    : <button onClick={() => inviteMember(invitePicker.id, m.player_id, m.nickname)}
+                        className="text-xs bg-emerald-800 hover:bg-emerald-700 px-3 py-1.5 rounded-lg font-bold shrink-0">Agregar</button>}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter><Button variant="secondary" onClick={() => setInvitePicker(null)}>Listo</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -14,22 +14,26 @@ const tm = require('./tableManager');
 const { startHand, emitToTable, emitToPlayer } = require('./gameStateMachine');
 const { BotClient } = require('./bot/BotClient');
 
-const STARTING_STACK = 1500;
+const STARTING_STACK = 10000;
 const TABLE_SIZE = 6;
 
 // Schedule por defecto (niveles de ciegas por minutos)
 // Stack inicial = 1500. Las ciegas suben gradualmente y NO pasan del stack
 // (antes terminaba en 800/1600, por encima de 1500 → all-ins forzados).
+// Ciegas calibradas para el stack inicial de 10.000: empieza en 100 ciegas
+// grandes (50/100) y sube gradualmente hasta el endgame (2000/4000 ≈ 2-5 BB),
+// sin que la ciega grande supere nunca el stack inicial. 'minutes' por nivel.
 const DEFAULT_BLINDS = [
-  { smallBlind: 10, bigBlind: 20, minutes: 3 },
-  { smallBlind: 15, bigBlind: 30, minutes: 3 },
-  { smallBlind: 25, bigBlind: 50, minutes: 3 },
-  { smallBlind: 50, bigBlind: 100, minutes: 3, ante: 10 },
-  { smallBlind: 75, bigBlind: 150, minutes: 3, ante: 15 },
-  { smallBlind: 100, bigBlind: 200, minutes: 3, ante: 25 },
-  { smallBlind: 150, bigBlind: 300, minutes: 3, ante: 30 },
+  { smallBlind: 50, bigBlind: 100, minutes: 3 },
+  { smallBlind: 75, bigBlind: 150, minutes: 3 },
+  { smallBlind: 100, bigBlind: 200, minutes: 3 },
+  { smallBlind: 150, bigBlind: 300, minutes: 3, ante: 25 },
   { smallBlind: 200, bigBlind: 400, minutes: 3, ante: 50 },
-  { smallBlind: 300, bigBlind: 600, minutes: 99, ante: 75 },
+  { smallBlind: 300, bigBlind: 600, minutes: 3, ante: 75 },
+  { smallBlind: 500, bigBlind: 1000, minutes: 3, ante: 100 },
+  { smallBlind: 800, bigBlind: 1600, minutes: 3, ante: 200 },
+  { smallBlind: 1200, bigBlind: 2400, minutes: 3, ante: 300 },
+  { smallBlind: 2000, bigBlind: 4000, minutes: 99, ante: 400 },
 ];
 
 // Runtime por torneo: tournamentId → { tableIds, botClients(Map), seatOf(Map),
