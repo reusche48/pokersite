@@ -505,12 +505,19 @@ async function start(req, res) {
 
 // GET /tournaments/:id/my-table  → mesa actual del jugador (para (re)entrar)
 async function myTable(req, res) {
-  const { resolveMyTable } = require('../engine/tournamentManager');
+  const { resolveMyTable, closeStuckTournament } = require('../engine/tournamentManager');
   const r = resolveMyTable(req.params.id, req.player.id);
   // r = { tableId, spectate }. Si estás eliminado, spectate:true → ves la mesa
   // final; si el torneo ya terminó, null → 404.
-  if (!r) return res.status(404).json({ error: 'El torneo ya terminó' });
-  res.json(r);
+  if (r) return res.json(r);
+  // Sin mesas vivas: si en la BD sigue 'running' es un fantasma (lo interrumpió
+  // un reinicio). Se cierra al momento en vez de dejarlo colgado en el lobby.
+  const [[t]] = await pool.query('SELECT status FROM tournaments WHERE id = ?', [req.params.id]);
+  if (t?.status === 'running') {
+    try { await closeStuckTournament(req.params.id); } catch (e) { console.error('[myTable] cierre fantasma:', e.message); }
+    return res.status(410).json({ error: 'Ese torneo se interrumpió y ya se cerró — mira el resultado en el historial' });
+  }
+  res.status(404).json({ error: 'El torneo ya terminó' });
 }
 
 // GET /tournaments/:id/standings  → clasificación (vivos + eliminados)

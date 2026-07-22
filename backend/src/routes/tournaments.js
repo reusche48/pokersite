@@ -1,12 +1,13 @@
 const router = require('express').Router();
 const {
   listTournaments, getTournament, createTournament,
-  register, unregister, fillBots, start, quickFill, cancelTournament, myTable, standings,
+  register, unregister, fillBots, start, quickFill, cancelTournament, myTable, standings, publicStandings,
 } = require('../controllers/tournamentsController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
-// Público: listar y ver
+// Público: listar, ver y marcador en vivo (sin login)
 router.get('/', listTournaments);
+router.get('/:id/public', publicStandings);
 router.get('/:id', getTournament);
 
 // Autenticado

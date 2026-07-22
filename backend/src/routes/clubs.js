@@ -4,7 +4,7 @@ const {
   approveMember, updateClub, createUnion, joinUnion, leaveUnion,
 } = require('../controllers/clubsController');
 const { createClubTable, deleteClubTable } = require('../controllers/tablesController');
-const { createClubTournament, fillClubBots, cancelClubTournament, quickFillClub } = require('../controllers/tournamentsController');
+const { createClubTournament, fillClubBots, cancelClubTournament, quickFillClub, inviteToClubTournament } = require('../controllers/tournamentsController');
 const { seatClubBots } = require('../controllers/adminController');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -31,6 +31,7 @@ router.delete('/:id/tables/:tableId', deleteClubTable);
 router.post('/:id/tournaments', createClubTournament);
 router.post('/:id/tournaments/:tid/bots', fillClubBots);
 router.post('/:id/tournaments/:tid/quickfill', quickFillClub);
+router.post('/:id/tournaments/:tid/invite', inviteToClubTournament);
 router.delete('/:id/tournaments/:tid', cancelClubTournament);
 router.post('/:id/tables/:tableId/bots', seatClubBots);
 

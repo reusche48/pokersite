@@ -66,6 +66,34 @@ async function guestLogin(req, res) {
   res.json({ token: signToken(player), player: { id, nickname: nick, play_chips: 1000, real_chips: 0 } });
 }
 
+// POST /auth/spectator → invitado de SOLO MIRAR (para el link público de torneo).
+// Ligero, con límite holgado (los espectadores son inofensivos, read-only). El
+// cliente lo cachea en el dispositivo, así no crea uno nuevo en cada visita.
+const SPECTATOR_MAX_PER_IP = 30;
+async function spectatorGuest(req, res) {
+  const ip = clientIp(req);
+  try {
+    const [[c]] = await pool.query(
+      `SELECT COUNT(DISTINCT le.player_id) n
+       FROM login_events le JOIN players p ON p.id = le.player_id
+       WHERE le.ip = ? AND p.is_bot = 0 AND p.email IS NULL AND le.at >= NOW() - INTERVAL 24 HOUR`,
+      [ip]
+    );
+    if (c.n >= SPECTATOR_MAX_PER_IP) {
+      return res.status(429).json({ error: 'Demasiados accesos desde esta red.' });
+    }
+  } catch (e) { console.error('[spectatorGuest] límite:', e.message); }
+
+  const id = uuidv4();
+  const nick = 'Mirón' + Math.floor(1000 + Math.random() * 9000);
+  await pool.query('INSERT INTO players (id, nickname, play_chips) VALUES (?, ?, 0)', [id, nick]);
+  const ua = (req.headers['user-agent'] || '').slice(0, 255);
+  const fp = (req.headers['x-fingerprint'] || '').toString().slice(0, 64) || null;
+  pool.query('INSERT INTO login_events (player_id, ip, user_agent, fingerprint) VALUES (?, ?, ?, ?)', [id, ip, ua, fp]).catch(() => {});
+  const player = { id, nickname: nick, is_admin: 0 };
+  res.json({ token: signToken(player), player: { id, nickname: nick, play_chips: 0, real_chips: 0, spectator: true } });
+}
+
 async function register(req, res) {
   const { nickname, email, password } = req.body;
   if (!nickname || !email || !password) {
@@ -215,4 +243,4 @@ async function selfExclude(req, res) {
   res.json({ ok: true, message: `Autoexclusión activada por ${days} día(s). No podrás entrar hasta que termine.`, days });
 }
 
-module.exports = { guestLogin, register, login, refreshToken, appeal, changePassword, forgotPassword, resetPassword, selfExclude };
+module.exports = { guestLogin, spectatorGuest, register, login, refreshToken, appeal, changePassword, forgotPassword, resetPassword, selfExclude };

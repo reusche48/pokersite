@@ -312,9 +312,93 @@ async function resumeTournaments() {
 
       console.log(`[Torneos] "${rt.name}" restaurado: ${rt.remaining.size} vivos en ${rt.tableIds.length} mesa(s)`);
     } catch (e) {
+      // Si la restauración falla NO se puede dejar el torneo en 'running': se
+      // queda de fantasma en el lobby (se ve "En curso" pero al pulsar Entrar
+      // no hay ninguna mesa) y el siguiente reinicio vuelve a fallar igual.
       console.error(`[Torneos] no se pudo restaurar "${t.name}":`, e.message);
+      runtime.delete(t.id);
+      try { await closeStuckTournament(t.id); }
+      catch (e2) { console.error(`[Torneos] cierre de "${t.name}" falló:`, e2.message); }
     }
   }
+}
+
+// ── Watchdog de torneos fantasma ──
+// Un torneo puede quedarse en 'running' en la BD sin runtime en memoria: fallo
+// al restaurar tras un reinicio, crash a mitad de finalize, etc. Queda de zombi
+// en el lobby: aparece "En curso" pero al pulsar Entrar no existe ninguna mesa.
+// Cada minuto detectamos esos fantasmas y los cerramos pagando según el último
+// snapshot (los vivos se ordenan por stack, los eliminados guardan su puesto).
+const BOOT_AT = Date.now();
+const BOOT_GRACE_MS = 2 * 60 * 1000;  // margen para que el resume del arranque acabe
+const GHOST_GRACE_MS = 3 * 60 * 1000; // margen desde que arrancó el torneo
+
+async function tournamentWatchdogTick() {
+  if (Date.now() - BOOT_AT < BOOT_GRACE_MS) return;
+  const [rows] = await pool.query("SELECT id, name, started_at FROM tournaments WHERE status = 'running'");
+  for (const t of rows) {
+    if (runtime.get(t.id)) continue; // vivo en memoria: nada que hacer
+    const startedAt = t.started_at ? new Date(t.started_at).getTime() : 0;
+    if (startedAt && Date.now() - startedAt < GHOST_GRACE_MS) continue;
+    try {
+      if (await closeStuckTournament(t.id)) {
+        console.warn(`[torneo watchdog] "${t.name}" fantasma — cerrado y pagado con el último snapshot`);
+      }
+    } catch (e) {
+      console.error('[torneo watchdog]', t.id, e.message);
+    }
+  }
+}
+
+// Cierra un torneo 'running' que ya no tiene runtime (interrumpido por un
+// reinicio o un fallo). Reconstruye la clasificación final desde el último
+// snapshot y reutiliza finalize() para pagar en UNA transacción idempotente.
+// Devuelve true si lo cerró.
+async function closeStuckTournament(tournamentId) {
+  if (runtime.get(tournamentId)) return false; // sigue vivo: no tocar
+  const [[t]] = await pool.query('SELECT * FROM tournaments WHERE id = ?', [tournamentId]);
+  if (!t || t.status !== 'running') return false;
+
+  const snap = jparse(t.runtime_json, null);
+  const remaining = new Set(snap?.remaining || []);
+  // Clasificación final: los eliminados conservan el puesto que ya tenían y los
+  // que seguían vivos se ordenan por fichas (más stack = mejor puesto). Es la
+  // resolución honesta de un torneo que se cortó a medias.
+  const positions = { ...(snap?.positions || {}) };
+  const alive = (snap?.tables || [])
+    .flatMap(tb => tb.seats || [])
+    .filter(s => remaining.has(s.playerId))
+    .sort((a, b) => (b.stack || 0) - (a.stack || 0));
+  alive.forEach((s, i) => { positions[s.playerId] = i + 1; });
+
+  if (!Object.keys(positions).length) {
+    // Sin snapshot utilizable no hay a quién pagar: solo limpiar el lobby.
+    await pool.query("UPDATE tournaments SET status = 'finished', ended_at = NOW(), runtime_json = NULL WHERE id = ?", [tournamentId]);
+    return true;
+  }
+
+  const totalEntrants = snap?.totalEntrants || Object.keys(positions).length;
+  // Runtime mínimo para reutilizar finalize() (transaccional + idempotente).
+  runtime.set(tournamentId, {
+    id: tournamentId, tableIds: [], botClients: new Map(), seatOf: new Map(),
+    remaining, positions, nicks: snap?.nicks || {},
+    prizePool: snap?.prizePool ?? (parseFloat(t.prize_pool) || 0),
+    payout: snap?.payout || jparse(t.payout_json, defaultPayout(totalEntrants)),
+    chipMode: snap?.chipMode || t.chip_mode,
+    totalEntrants, blindIdx: 0, schedule: [], blindTimer: null,
+    bounty: 0, // las recompensas ya se pagaron en vivo en cada KO
+  });
+  await finalize(tournamentId);
+
+  // finalize() avisa por mesa, pero aquí no queda ninguna: avisar jugador a
+  // jugador para que el que tenga la app abierta vea el resultado.
+  for (const pid of Object.keys(positions)) {
+    emitToPlayer(pid, 'torneo_finalizado', {
+      tournamentId, name: t.name, positions, totalEntrants,
+      endedAt: new Date().toISOString(), champion: null,
+    });
+  }
+  return true;
 }
 
 // Arma la info del torneo para el HUD y la pega en cada mesa viva.
@@ -696,4 +780,4 @@ function getStandings(tournamentId) {
   };
 }
 
-module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, resolveMyTable, getStandings, resumeTournaments, isLateRegOpen, lateJoin };
+module.exports = { startTournament, STARTING_STACK, DEFAULT_BLINDS, defaultPayout, getPlayerTable, resolveMyTable, getStandings, resumeTournaments, isLateRegOpen, lateJoin, tournamentWatchdogTick, closeStuckTournament };

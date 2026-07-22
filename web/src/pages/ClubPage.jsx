@@ -88,8 +88,12 @@ export function ClubPage() {
   async function enterTournament(tid) {
     try {
       const { data } = await api.get(`/tournaments/${tid}/my-table`);
-      navigate(`/table/${data.tableId}?buyIn=1500`);
-    } catch (e) { toast.error(e.response?.data?.error || 'No se encontró tu mesa'); }
+      // Eliminado → spectate:true → entra como espectador a la mesa final
+      navigate(`/table/${data.tableId}?${data.spectate ? 'watch=1' : 'buyIn=1500'}`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se encontró tu mesa');
+      load(); // el torneo puede haberse cerrado: refrescar para que desaparezca
+    }
   }
   async function addTournamentBots(tid) {
     try {

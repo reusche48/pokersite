@@ -132,6 +132,12 @@ setupDb()
     // y la reactiva. Red de seguridad ante cualquier cuelgue del motor.
     const gsm = require('./src/engine/gameStateMachine');
     setInterval(() => { try { gsm.watchdogTick(); } catch (e) { console.error('[watchdog]', e.message); } }, 15000);
+    // Watchdog de torneos: cierra los que quedaron 'running' en la BD sin mesas
+    // vivas (fantasmas del lobby: "En curso" pero no se puede entrar).
+    const tmgr = require('./src/engine/tournamentManager');
+    setInterval(() => {
+      tmgr.tournamentWatchdogTick().catch(e => console.error('[torneo watchdog]', e.message));
+    }, 60000);
   })
   .catch(err => {
     console.error('[DB] Setup failed:', err);

@@ -19,6 +19,7 @@ import { AdminBotsPage } from './pages/admin/AdminBotsPage';
 import { AdminTournamentsPage } from './pages/admin/AdminTournamentsPage';
 import { AdminAccuracyPage } from './pages/admin/AdminAccuracyPage';
 import { AdminSecurityPage } from './pages/admin/AdminSecurityPage';
+import { PublicTournamentPage } from './pages/PublicTournamentPage';
 // Carga diferida: el código 3D (three.js, ~880 KB) solo se descarga al abrir la
 // mesa 3D — un teléfono de gama baja que nunca la abre no lo descarga jamás.
 const Table3DDemoPage = lazy(() => import('./pages/Table3DDemoPage').then(m => ({ default: m.Table3DDemoPage })));
@@ -34,6 +35,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LobbyPage />} />
+            <Route path="/ver/:id" element={<PublicTournamentPage />} />
             <Route path="/table/:id" element={<TablePage />} />
             <Route path="/historial" element={<HistoryPage />} />
             <Route path="/estadisticas" element={<StatsPage />} />
