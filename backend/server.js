@@ -40,14 +40,18 @@ app.use('/api', mutationLimiter);
 
 // Health check para el orquestador (Railway/Docker): verifica el proceso y la
 // conexión a MySQL. 200 = listo, 503 = la DB no responde.
+const APP_VERSION = require('./src/config/version');
 app.get('/health', async (req, res) => {
   try {
     await require('./src/config/db').query('SELECT 1');
-    res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+    res.json({ status: 'ok', version: APP_VERSION, uptime: Math.round(process.uptime()) });
   } catch (e) {
-    res.status(503).json({ status: 'db_down', error: e.code || e.message });
+    res.status(503).json({ status: 'db_down', version: APP_VERSION, error: e.code || e.message });
   }
 });
+// Versión visible en la app (el lobby la muestra): permite saber de un vistazo
+// si producción corre el último deploy.
+app.get('/api/version', (req, res) => res.json({ version: APP_VERSION }));
 
 // Rate-limit en auth: frena fuerza bruta de contraseñas sin molestar el juego.
 const authLimiter = rateLimit({

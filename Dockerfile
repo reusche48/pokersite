@@ -1,3 +1,10 @@
+# ─── Etapa 0: versión desde git (1.0.<nº commits> + hash) ───
+FROM alpine/git AS gitinfo
+WORKDIR /repo
+COPY .git ./.git
+RUN echo "1.0.$(git rev-list --count HEAD) ($(git rev-parse --short HEAD))" > /appversion \
+  || echo "1.0.docker" > /appversion
+
 # ─── Etapa 1: construir la web (Vite) ───
 FROM node:20-alpine AS web
 WORKDIR /app/web
@@ -22,6 +29,8 @@ COPY backend/ ./backend/
 COPY --from=deps /app/backend/node_modules ./backend/node_modules
 # La web compilada (server.js la sirve desde ../web/dist)
 COPY --from=web /app/web/dist ./web/dist
+# Versión derivada de git en build-time (version.js la lee en runtime)
+COPY --from=gitinfo /appversion ./backend/.appversion
 
 WORKDIR /app/backend
 EXPOSE 4000

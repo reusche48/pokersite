@@ -135,10 +135,13 @@ export function LobbyPage() {
   const [newClubName, setNewClubName] = useState('');
   const [showCreateClub, setShowCreateClub] = useState(false);
   const [showNotifBtn, setShowNotifBtn] = useState(() => canAskNotifications());
+  const [appVersion, setAppVersion] = useState('');
   const isMobile = useIsMobile();
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 1000);
+    // Versión del SERVIDOR (para saber de un vistazo si está actualizado)
+    api.get('/version').then(({ data }) => setAppVersion(data.version)).catch(() => {});
     return () => clearInterval(t);
   }, []);
 
@@ -621,6 +624,11 @@ export function LobbyPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Versión del servidor — para saber si producción corre el último deploy */}
+      {appVersion && (
+        <footer className="text-center text-[11px] text-gray-600 pb-4 select-all">v{appVersion}</footer>
+      )}
     </div>
   );
 }
