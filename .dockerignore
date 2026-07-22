@@ -1,7 +1,7 @@
 **/node_modules
 **/dist
 **/dev-dist
-# .git SÍ entra al contexto: la etapa gitinfo deriva la versión (1.0.<commits>)
+.git
 .github
 *.md
 backend/.env
