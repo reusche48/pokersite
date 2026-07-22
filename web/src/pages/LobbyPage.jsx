@@ -8,6 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { notify, canAskNotifications, askNotifications } from '../lib/notify';
 import { Avatar } from '../components/table/Avatar';
 import { TournamentStandings } from '../components/table/TournamentStandings';
+import { GameCode } from '../components/common/GameCode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -80,8 +81,11 @@ function TableCard({ table, onJoin }) {
   return (
     <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 hover:border-green-600 card-hover">
       <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 className="font-bold text-white text-lg">{table.name}</h3>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-bold text-white text-lg truncate">{table.name}</h3>
+            <GameCode seq={table.seq} kind="M" />
+          </div>
           <span className="text-xs text-gray-400 uppercase tracking-wider">{table.game_type?.replace('_',' ')} · {table.chip_mode === 'real' ? '💵 Real' : '🎮 Play'}</span>
         </div>
         <span className={`text-xs px-2 py-1 rounded-full font-semibold ${full ? 'bg-red-900 text-red-300' : 'bg-green-900 text-green-300'}`}>
@@ -428,8 +432,11 @@ export function LobbyPage() {
                 return (
                   <div key={t.id} className="bg-gray-800 rounded-2xl p-5 border border-yellow-800/40 card-hover">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-bold text-white text-lg">{t.name}</h3>
-                      <span className={`text-xs px-2 py-1 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="font-bold text-white text-lg truncate">{t.name}</h3>
+                        <GameCode seq={t.seq} kind="T" />
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
                         {running ? 'En curso' : `${t.registered}/${t.max_players}`}
                       </span>
                     </div>

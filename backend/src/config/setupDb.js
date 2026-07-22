@@ -416,6 +416,15 @@ async function setupDb() {
     await ensureColumn('players', 'token_version', 'INT NOT NULL DEFAULT 0');
     await ensureColumn('players', 'excluded_until', 'DATETIME NULL');
 
+    // ── Número corto de torneo/mesa (identificador legible: T-142, M-37) ──
+    // El id real es un UUID, imposible de dictar o buscar a mano. Este
+    // AUTO_INCREMENT da un número corto, ordenado por antigüedad, que se
+    // muestra en la app y sirve para localizar la partida en la BD:
+    //   SELECT * FROM tournaments WHERE seq = 142;
+    // Al añadir la columna, MySQL numera las filas existentes automáticamente.
+    await ensureColumn('tournaments', 'seq', 'INT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE KEY');
+    await ensureColumn('tables_cash', 'seq', 'INT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE KEY');
+
     console.log('[DB] Schema created/verified');
   } finally {
     conn.release();

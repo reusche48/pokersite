@@ -50,6 +50,7 @@ export function PublicTournamentPage() {
       <div className="mb-5">
         <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-2xl font-bold">🏆 {data.name}</h1>
+          {data.code && <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-gray-900/70 text-gray-400 border border-gray-700">{data.code}</span>}
           <span className={`text-xs px-2 py-1 rounded-full font-semibold ${statusColor}`}>{NIVEL_LABEL[data.status] || data.status}</span>
         </div>
         <div className="text-sm text-gray-400 mt-1 flex flex-wrap gap-x-4 gap-y-1">

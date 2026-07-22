@@ -40,7 +40,7 @@ export function ChampionOverlay({ data, onClose }) {
     let dateStr = '';
     try { dateStr = new Date(data.endedAt).toLocaleDateString('es', { day: '2-digit', month: 'long', year: 'numeric' }); } catch { dateStr = ''; }
     ctx.fillStyle = '#9fb0a8'; ctx.font = '42px system-ui, sans-serif';
-    ctx.fillText(`👥 ${data.totalEntrants || '?'} jugadores    ·    📅 ${dateStr}`, W / 2, 952);
+    ctx.fillText(`👥 ${data.totalEntrants || '?'} jugadores    ·    📅 ${dateStr}${data.code ? `    ·    ${data.code}` : ''}`, W / 2, 952);
     ctx.fillStyle = '#8a7eb0'; ctx.font = 'bold 46px system-ui, sans-serif';
     ctx.fillText('♠ PokerSite', W / 2, 1028);
 

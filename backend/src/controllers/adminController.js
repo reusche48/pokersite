@@ -247,4 +247,66 @@ async function trainModel(req, res) {
   }
 }
 
-module.exports = { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, seatClubBots, banPlayer, securityReport, trainModel };
+// GET /admin/lookup/:code → ficha completa de un torneo o mesa a partir del
+// identificador corto que se ve en la app (T-142 / M-37), del nº suelto o del
+// UUID. Pensado para investigar incidencias: "¿qué torneo fue el que se colgó?".
+async function lookup(req, res) {
+  const raw = String(req.params.code || '').trim().toUpperCase();
+  const m = raw.match(/^([TM])-?(\d+)$/);
+  const isUuid = /^[0-9a-f-]{36}$/i.test(raw);
+  const num = /^\d+$/.test(raw) ? Number(raw) : (m ? Number(m[2]) : null);
+
+  // Torneo (por T-nnn, por nº suelto o por UUID)
+  if (!m || m[1] === 'T') {
+    const [[t]] = await pool.query(
+      isUuid ? 'SELECT * FROM tournaments WHERE id = ?' : 'SELECT * FROM tournaments WHERE seq = ?',
+      [isUuid ? raw : num]
+    );
+    if (t) {
+      const [regs] = await pool.query(
+        `SELECT p.nickname, p.is_bot, r.final_position, r.prize_won, r.registered_at
+         FROM tournament_registrations r JOIN players p ON p.id = r.player_id
+         WHERE r.tournament_id = ? ORDER BY r.final_position IS NULL DESC, r.final_position`, [t.id]
+      );
+      const [[club]] = t.club_id
+        ? await pool.query('SELECT name, club_code FROM clubs WHERE id = ?', [t.club_id]) : [[]];
+      const { getStandings } = require('../engine/tournamentManager');
+      return res.json({
+        tipo: 'torneo', code: t.seq ? `T-${t.seq}` : null, id: t.id, nombre: t.name,
+        estado: t.status, club: club ? `${club.name} (${club.club_code})` : null,
+        buyIn: Number(t.buy_in) || 0, fee: Number(t.fee) || 0, bote: Number(t.prize_pool) || 0,
+        creado: t.created_at, arrancado: t.started_at, terminado: t.ended_at,
+        inscritos: regs.length,
+        enVivo: t.status === 'running' ? (getStandings(t.id) ? 'sí (runtime en memoria)' : 'NO — fantasma, sin mesas vivas') : null,
+        jugadores: regs.map(r => ({
+          nickname: r.nickname, bot: !!r.is_bot,
+          puesto: r.final_position, premio: Number(r.prize_won) || 0,
+        })),
+      });
+    }
+  }
+
+  // Mesa cash (por M-nnn, por nº suelto o por UUID)
+  if (!m || m[1] === 'M') {
+    const [[tb]] = await pool.query(
+      isUuid ? 'SELECT * FROM tables_cash WHERE id = ?' : 'SELECT * FROM tables_cash WHERE seq = ?',
+      [isUuid ? raw : num]
+    );
+    if (tb) {
+      const live = tm.getTable(tb.id);
+      const [[club]] = tb.club_id
+        ? await pool.query('SELECT name, club_code FROM clubs WHERE id = ?', [tb.club_id]) : [[]];
+      return res.json({
+        tipo: 'mesa', code: tb.seq ? `M-${tb.seq}` : null, id: tb.id, nombre: tb.name,
+        estado: tb.status, club: club ? `${club.name} (${club.club_code})` : null,
+        ciegas: `${tb.small_blind}/${tb.big_blind}`, asientos: tb.max_seats, creada: tb.created_at,
+        enVivo: !!live,
+        sentados: live ? live.seats.filter(s => s.playerId).map(s => ({ nickname: s.nickname, stack: s.stack })) : [],
+      });
+    }
+  }
+
+  res.status(404).json({ error: `Nada encontrado con "${raw}". Usa T-142 (torneo), M-37 (mesa) o el UUID.` });
+}
+
+module.exports = { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, seatClubBots, banPlayer, securityReport, trainModel, lookup };

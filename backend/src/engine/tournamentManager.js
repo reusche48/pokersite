@@ -145,6 +145,7 @@ async function startTournament(tournamentId) {
     totalEntrants: regs.length,
     name: t.name,
     id: tournamentId,
+    code: t.seq ? `T-${t.seq}` : null, // identificador corto (ver setupDb: seq)
     bounty: parseFloat(t.bounty) || 0,
     nicks: Object.fromEntries(regs.map(r => [r.player_id, r.nickname])),
   };
@@ -200,6 +201,7 @@ function snapshotTournament(tournamentId) {
       schedule: rt.schedule,
       bounty: rt.bounty || 0,
       name: rt.name,
+      code: rt.code || null,
       chipMode: rt.chipMode,
       prizePool: rt.prizePool,
       payout: rt.payout,
@@ -269,6 +271,7 @@ async function resumeTournaments() {
         chipMode: snap.chipMode || t.chip_mode,
         totalEntrants: snap.totalEntrants || snap.remaining.length,
         name: snap.name || t.name,
+        code: snap.code || (t.seq ? `T-${t.seq}` : null),
         id: t.id,
         bounty: snap.bounty || parseFloat(t.bounty) || 0,
         nicks: snap.nicks || {},
@@ -408,6 +411,7 @@ function updateTournamentInfo(rt) {
   const info = {
     tournamentId: rt.id || null,
     name: rt.name || null,
+    code: rt.code || null,
     remaining: rt.remaining.size,
     total: rt.totalEntrants,
     level: rt.blindIdx + 1,
@@ -618,7 +622,8 @@ async function finalize(tournamentId) {
   if (rt.finalizing) return;
   rt.finalizing = true;
   const chipCol = rt.chipMode === 'real' ? 'real_chips' : 'play_chips';
-  const [[tRow]] = await pool.query('SELECT name FROM tournaments WHERE id = ?', [tournamentId]);
+  const [[tRow]] = await pool.query('SELECT name, seq FROM tournaments WHERE id = ?', [tournamentId]);
+  if (!rt.code && tRow?.seq) rt.code = `T-${tRow.seq}`;
 
   // Todos los pagos + el cierre en UNA transacción, con idempotencia dura: si el
   // torneo ya está 'finished' (p.ej. un resume tras crash volvió a llamar aquí),
@@ -668,7 +673,7 @@ async function finalize(tournamentId) {
     : null;
   for (const tid of rt.tableIds) {
     emitToTable(tid, 'torneo_finalizado', {
-      tournamentId, name: tRow?.name, positions: rt.positions,
+      tournamentId, name: tRow?.name, code: rt.code || null, positions: rt.positions,
       totalEntrants: rt.totalEntrants, endedAt: new Date().toISOString(), champion,
     });
   }
@@ -772,7 +777,7 @@ function getStandings(tournamentId) {
   // Nivel de ciegas actual (para el marcador en vivo)
   const lvl = rt.schedule?.[Math.min(rt.blindIdx || 0, (rt.schedule?.length || 1) - 1)] || {};
   return {
-    name: rt.name, total: rt.totalEntrants,
+    name: rt.name, code: rt.code || null, total: rt.totalEntrants,
     paidPlaces: Object.keys(rt.payout || {}).length,
     prizePool, payouts, tables: rt.tableIds.length,
     nivel: (rt.blindIdx || 0) + 1, smallBlind: lvl.smallBlind || null, bigBlind: lvl.bigBlind || null, ante: lvl.ante || 0,

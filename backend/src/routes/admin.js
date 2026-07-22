@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, banPlayer, securityReport, trainModel } = require('../controllers/adminController');
+const { seatBots, unseatBots, listActiveBots, labelAccuracy, dashboard, banPlayer, securityReport, trainModel, lookup } = require('../controllers/adminController');
 const { adminDeleteTable } = require('../controllers/tablesController');
 const { authMiddleware, requireAdmin } = require('../middleware/auth');
 
@@ -15,5 +15,7 @@ router.post('/players/:id/ban', banPlayer);
 router.get('/security', securityReport);
 router.post('/ml/train', trainModel);
 router.delete('/tables/:id', adminDeleteTable);
+// Buscar una partida por su identificador corto (T-142 / M-37) o su UUID
+router.get('/lookup/:code', lookup);
 
 module.exports = router;

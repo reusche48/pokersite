@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { SPEEDS } from '../lib/blindSchedules';
+import { GameCode } from '../components/common/GameCode';
 
 // Velocidades de ciegas (mismos presets que el panel admin).
 // Stack inicial = 1500. Las ciegas suben GRADUALMENTE — nunca saltan por
@@ -317,8 +318,11 @@ export function ClubPage() {
                 return (
                   <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-yellow-800/40">
                     <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-bold">{t.name}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="font-bold truncate">{t.name}</h3>
+                        <GameCode seq={t.seq} kind="T" />
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
                         {running ? 'En curso' : `${t.registered}/${t.max_players}`}
                       </span>
                     </div>
@@ -376,8 +380,11 @@ export function ClubPage() {
               {club.tables.map(t => (
                 <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-green-800/40">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-bold">{t.name}</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="font-bold truncate">{t.name}</h3>
+                      <GameCode seq={t.seq} kind="M" />
+                    </div>
+                    <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
                   </div>
                   <div className="text-sm text-gray-300 mb-3">
                     Ciegas <span className="text-white font-mono">{Math.round(t.small_blind)}/{Math.round(t.big_blind)}</span>
@@ -519,8 +526,11 @@ export function ClubPage() {
                 return (
                   <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-yellow-800/40">
                     <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-bold">{t.name}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="font-bold truncate">{t.name}</h3>
+                        <GameCode seq={t.seq} kind="T" />
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold ${running ? 'bg-green-900 text-green-300' : 'bg-sky-900 text-sky-300'}`}>
                         {running ? 'En curso' : `${t.registered}/${t.max_players}`}
                       </span>
                     </div>
@@ -555,8 +565,11 @@ export function ClubPage() {
               {club.unionTables.map(t => (
                 <div key={t.id} className="bg-gray-800 rounded-2xl p-4 border border-green-800/40">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-bold">{t.name}</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="font-bold truncate">{t.name}</h3>
+                      <GameCode seq={t.seq} kind="M" />
+                    </div>
+                    <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-900 text-gray-300">{t.seated}/{t.max_seats}</span>
                   </div>
                   <div className="text-[11px] text-purple-300 mb-1">{t.club_emblem} {t.club_name}</div>
                   <div className="text-sm text-gray-300 mb-3">

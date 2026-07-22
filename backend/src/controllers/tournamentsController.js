@@ -533,12 +533,12 @@ function standings(req, res) {
 async function publicStandings(req, res) {
   const tid = req.params.id;
   const [[t]] = await pool.query(
-    'SELECT id, name, status, buy_in, fee, prize_pool, max_players, starts_at, bounty FROM tournaments WHERE id = ?', [tid]
+    'SELECT id, seq, name, status, buy_in, fee, prize_pool, max_players, starts_at, bounty FROM tournaments WHERE id = ?', [tid]
   );
   if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
 
   const base = {
-    id: t.id, name: t.name, status: t.status,
+    id: t.id, code: t.seq ? `T-${t.seq}` : null, name: t.name, status: t.status,
     buyIn: Number(t.buy_in) || 0, fee: Number(t.fee) || 0,
     prizePool: Number(t.prize_pool) || 0, maxPlayers: t.max_players,
     bounty: Number(t.bounty) || 0, startsAt: t.starts_at,

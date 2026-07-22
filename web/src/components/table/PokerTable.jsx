@@ -251,6 +251,7 @@ export function PokerTable({ tableId, initialBuyIn, spectate = false }) {
           {!isMobile && (
             <>
               <span className="text-purple-200">🏆 {tableState.tournament.name || 'Torneo'}</span>
+              {tableState.tournament.code && <span className="text-purple-400/80 font-mono">{tableState.tournament.code}</span>}
               <span className="text-purple-700">·</span>
             </>
           )}
