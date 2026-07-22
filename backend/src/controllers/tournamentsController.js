@@ -148,7 +148,10 @@ async function createTournament(req, res) {
     res.status(201).json(r);
   } catch (e) {
     if (e.http) return res.status(e.http).json({ error: e.msg });
-    console.error('[createTournament]', e); res.status(500).json({ error: 'Error al crear torneo' });
+    console.error('[createTournament]', e);
+    // code (p.ej. ER_BAD_FIELD_ERROR) ayuda a diagnosticar en producción sin
+    // exponer detalles internos (no incluye SQL ni mensaje).
+    res.status(500).json({ error: 'Error al crear torneo', code: e.code || undefined });
   }
 }
 
@@ -163,7 +166,8 @@ async function createClubTournament(req, res) {
     res.status(201).json(r);
   } catch (e) {
     if (e.http) return res.status(e.http).json({ error: e.msg });
-    console.error('[createClubTournament]', e); res.status(500).json({ error: 'Error al crear torneo' });
+    console.error('[createClubTournament]', e);
+    res.status(500).json({ error: 'Error al crear torneo', code: e.code || undefined });
   }
 }
 
