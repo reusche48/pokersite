@@ -13,6 +13,23 @@ async function setupDb() {
   await tempConn.end();
 
   const conn = await pool.getConnection();
+
+  // Añade una columna SOLO si falta (idempotente y a prueba de estados
+  // parciales). Necesario porque las migraciones antiguas añadían varias
+  // columnas en un mismo ALTER: si UNA ya existía, el ALTER entero fallaba con
+  // ER_DUP_FIELDNAME (tragado por el catch) y las demás nunca se creaban — así
+  // producción quedó sin 'fee'/'invite_only' y todo INSERT de torneo daba 500.
+  const ensureColumn = async (table, col, definition) => {
+    const [[c]] = await conn.query(
+      'SELECT COUNT(*) n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+      [table, col]
+    );
+    if (!c.n) {
+      await conn.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${col}\` ${definition}`);
+      console.log(`[DB] columna añadida: ${table}.${col}`);
+    }
+  };
+
   try {
     await conn.query(`CREATE TABLE IF NOT EXISTS players (
       id            CHAR(36)      NOT NULL DEFAULT (UUID()),
@@ -227,6 +244,13 @@ async function setupDb() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    // Torneo por invitación: solo el organizador inscribe (nadie se apunta solo)
+    try {
+      await conn.query(`ALTER TABLE tournaments ADD COLUMN invite_only TINYINT(1) NOT NULL DEFAULT 0`);
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
     // Bots: el nivel real y la personalidad viven aislados de players
     await conn.query(`CREATE TABLE IF NOT EXISTS bots (
       bot_id           CHAR(36)     NOT NULL,
@@ -373,6 +397,24 @@ async function setupDb() {
         console.log(`[DB] Backfill hand_players completo (${done} manos).`);
       }
     }
+
+    // ── Blindaje de columnas de ALTER combinados ──
+    // Garantiza que TODAS las columnas existan aunque un ALTER combinado
+    // anterior fallara a medias (ver ensureColumn). Idempotente y multi-motor.
+    await ensureColumn('tournaments', 'runtime_json', 'LONGTEXT NULL');
+    await ensureColumn('tournaments', 'bounty', 'DECIMAL(10,2) NOT NULL DEFAULT 0');
+    await ensureColumn('tournaments', 'club_id', 'CHAR(36) NULL');
+    await ensureColumn('tournaments', 'fee', 'DECIMAL(10,2) NOT NULL DEFAULT 0');
+    await ensureColumn('tournaments', 'invite_only', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await ensureColumn('tables_cash', 'club_id', 'CHAR(36) NULL');
+    await ensureColumn('tables_cash', 'rake_pct', 'DECIMAL(4,2) NOT NULL DEFAULT 0');
+    await ensureColumn('tables_cash', 'rake_cap_bb', 'INT NOT NULL DEFAULT 0');
+    await ensureColumn('tables_cash', 'runtime_json', 'LONGTEXT NULL');
+    await ensureColumn('clubs', 'join_mode', "ENUM('open','approval') NOT NULL DEFAULT 'open'");
+    await ensureColumn('clubs', 'union_id', 'CHAR(36) NULL');
+    await ensureColumn('club_members', 'status', "ENUM('pending','active') NOT NULL DEFAULT 'active'");
+    await ensureColumn('players', 'token_version', 'INT NOT NULL DEFAULT 0');
+    await ensureColumn('players', 'excluded_until', 'DATETIME NULL');
 
     console.log('[DB] Schema created/verified');
   } finally {
